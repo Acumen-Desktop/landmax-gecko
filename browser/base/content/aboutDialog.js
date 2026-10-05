@@ -87,6 +87,17 @@ function init() {
     versionAttributes
   );
 
+  // Landmax: "Reader 0.2 (Gecko 159.0a1, 2026-10-05)" when the branding sets our version (rebrand plan, step 0 q7).
+  let readerVersion = Services.prefs.getCharPref("landmax.reader.version", "");
+  if (readerVersion) {
+    let id = Services.appinfo.appBuildID;
+    document.l10n.setAttributes(versionField, "landmax-about-version", {
+      reader: readerVersion,
+      gecko: AppConstants.MOZ_APP_VERSION_DISPLAY,
+      isodate: `${id.slice(0, 4)}-${id.slice(4, 6)}-${id.slice(6, 8)}`,
+    });
+  }
+
   // Show a release notes link if we have a URL.
   let relNotesLink = document.getElementById("releasenotes");
   let relNotesPrefType = Services.prefs.getPrefType(

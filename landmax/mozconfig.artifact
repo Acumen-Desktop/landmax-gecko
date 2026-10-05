@@ -9,3 +9,6 @@ mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/obj-landmax-artifact
 mk_add_options MOZ_TELEMETRY_REPORTING=
 mk_add_options MOZ_DATA_REPORTING=
 ac_add_options --with-branding=browser/branding/landmax
+
+# Updates come through Library's package server (pacman), never Firefox's updater.
+ac_add_options --disable-updater

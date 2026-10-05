@@ -28,3 +28,15 @@
 #leftBox {
   background-image: url("chrome://branding/content/about-logo.svg");
 }
+
+/* Landmax: Mozilla's community, donation, feedback, help, terms and privacy links are Mozilla's, not ours. Licensing
+ * Information (about:license) stays: the MPL requires it. Our own line is #landmaxDesc. */
+#experimental,
+#communityDesc,
+#contributeDesc,
+#contributeDescReferrals,
+#aboutDialogHelpLink,
+#submit-feedback,
+.bottom-link:not([href="about:license"]) {
+  display: none !important;
+}

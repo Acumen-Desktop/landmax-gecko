@@ -201,11 +201,11 @@ menu-view-full-screen =
 
 # This should match reader-view-enter-button in browser.ftl
 menu-view-enter-readerview =
-    .label = Enter Reader View
+    .label = Show just the text
     .accesskey = R
 # This should match reader-view-close-button in browser.ftl
 menu-view-close-readerview =
-    .label = Close Reader View
+    .label = Back to the full page
     .accesskey = R
 
 ##

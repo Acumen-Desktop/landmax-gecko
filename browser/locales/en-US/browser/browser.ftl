@@ -990,10 +990,10 @@ urlbar-trending-dismissal-acknowledgment = Thanks for your feedback. You won’t
 
 # This should match menu-view-enter-readerview in menubar.ftl
 reader-view-enter-button =
-    .aria-label = Enter Reader View
+    .aria-label = Show just the text
 # This should match menu-view-close-readerview in menubar.ftl
 reader-view-close-button =
-    .aria-label = Close Reader View
+    .aria-label = Back to the full page
 
 ## Picture-in-Picture urlbar button
 ## Variables:

@@ -24,5 +24,12 @@
 # This brand name can be used in messages where the product name needs to
 # remain unchanged across different versions (Nightly, Beta, etc.).
 -brand-product-name = Landmax Reader
--vendor-short-name = Landmax
+# Stays "Mozilla": nearly every use names Mozilla itself (its add-on rules, its account, its certificate list).
+-vendor-short-name = Mozilla
 trademarkInfo = Firefox is a trademark of the Mozilla Foundation. Landmax Reader is built on its open-source code.
+
+## Landmax Reader's About window (rebrand plan, step 3)
+
+# Variables: $reader (our version), $gecko (the engine's version), $isodate (build date)
+landmax-about-version = Reader { $reader } (Gecko { $gecko }, { $isodate })
+landmax-about-desc = Landmax Reader is part of Landmax Library. Updates come with Library. It is built on the open-source engine of Firefox, by Mozilla.

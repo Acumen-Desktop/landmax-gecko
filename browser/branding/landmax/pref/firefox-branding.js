@@ -40,3 +40,5 @@ pref("browser.aboutwelcome.enabled", false);
 pref("datareporting.policy.dataSubmissionPolicyBypassNotification", true);
 pref("datareporting.policy.firstRunURL", "");
 pref("browser.shell.checkDefaultBrowser", false);
+// Our version, shown in About as "Reader 0.2 (Gecko 159.0a1, date)" (rebrand plan, step 0 question 7).
+pref("landmax.reader.version", "0.2");

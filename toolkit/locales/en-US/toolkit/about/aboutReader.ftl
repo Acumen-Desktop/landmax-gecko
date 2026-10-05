@@ -26,7 +26,7 @@ about-reader-font-type-monospace = Monospace
 
 ## Reader View toolbar buttons
 
-about-reader-toolbar-close = Close Reader View
+about-reader-toolbar-close = Back to the full page
 about-reader-toolbar-text-layout-controls = Text and layout
 about-reader-toolbar-theme-controls = Theme
 about-reader-toolbar-savetopocket = Save to { -pocket-brand-name }
