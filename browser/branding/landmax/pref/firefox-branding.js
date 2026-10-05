@@ -77,3 +77,6 @@ pref("extensions.getAddons.cache.enabled", false);
 
 // Containers (separate logins per site): Search's Private mode, and later TPAs and raw vs clean (Firefox review: Just works).
 pref("privacy.userContext.enabled", true);
+
+// No "Open previous tabs?" bar (SessionWindowUI: a count below 0 never shows it).
+pref("browser.startup.couldRestoreSession.count", -1);

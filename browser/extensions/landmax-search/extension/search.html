@@ -8,52 +8,43 @@
 </head>
 <body>
   <header>
-    <label class="private" title="Signed out, in a throwaway container, nothing remembered">
-      <input type="checkbox" id="private"> <span class="switch"></span> Private
-    </label>
-    <form id="form" autocomplete="off">
+    <form id="form" class="bar" autocomplete="off">
+      <label class="private" title="Private: signed out, in a throwaway container, nothing remembered">
+        <input type="checkbox" id="private"><span class="switch"></span><span>Private</span>
+      </label>
       <input id="words" type="search" placeholder="Search" aria-label="Search" autofocus>
+      <button type="submit" class="go" aria-label="Search">Search</button>
     </form>
     <div id="sent" class="sent" hidden></div>
 
-    <nav class="views" aria-label="What to show">
-      <button type="button" data-view="summary">Summary</button>
-      <button type="button" data-view="web">Web</button>
-    </nav>
-
     <div class="tools">
-      <label>When
-        <select id="when">
-          <option value="">Any time</option>
-          <option value="h">Past hour</option>
-          <option value="d">Past day</option>
-          <option value="w">Past week</option>
-          <option value="m">Past month</option>
-          <option value="y">Past year</option>
-        </select>
-      </label>
-      <label title="Google won't change your words"><input type="checkbox" id="exact"> Exactly as typed</label>
+      <div class="seg" role="group" aria-label="What to show">
+        <button type="button" data-view="summary">Summary</button>
+        <button type="button" data-view="web">Web</button>
+        <button type="button" data-view="news">News</button>
+      </div>
+      <select id="when" aria-label="When">
+        <option value="">Any time</option>
+        <option value="h">Past hour</option>
+        <option value="d">Past day</option>
+        <option value="w">Past week</option>
+        <option value="m">Past month</option>
+        <option value="y">Past year</option>
+      </select>
+      <label class="check" title="Google won't change your words"><input type="checkbox" id="exact"> Exact words</label>
+      <label class="check" title="Look inside each result for its picture, read time and junk. Each site sees one visit from this computer, with no cookies."><input type="checkbox" id="inside" checked> Look inside</label>
+      <div class="seg right" role="group" aria-label="Layout">
+        <button type="button" data-look="grid" title="Grid">☰</button>
+        <button type="button" data-look="wall" title="Pictures">▦</button>
+      </div>
     </div>
+    <div id="filters" class="filters" hidden></div>
+    <div id="views" class="views" hidden></div>
   </header>
 
   <main id="out">
-    <p class="hint">Type what you're looking for. Questions get Google's summary; a few words get plain links.</p>
+    <p class="hint">Ask a question for Google's summary, or a few words for plain results. Sort and filter the results like a spreadsheet.</p>
   </main>
-
-  <template id="card">
-    <article class="card">
-      <button type="button" class="open">
-        <span class="site"><img alt=""><span class="name"></span><span class="date"></span></span>
-        <span class="title"></span>
-        <span class="snippet"></span>
-        <span class="address"></span>
-      </button>
-      <div class="card-tools">
-        <button type="button" class="prefer" title="Show this site first from now on">Prefer this site</button>
-        <button type="button" class="never" title="Never show this site again">Never show</button>
-      </div>
-    </article>
-  </template>
 
   <script src="search.js"></script>
 </body>

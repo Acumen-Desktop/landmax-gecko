@@ -80,8 +80,9 @@ function googleQuery(words, opts) {
 function googleUrl(words, opts) {
   const u = new URL("https://www.google.com/search");
   u.searchParams.set("q", googleQuery(words, opts));
-  if (opts.view === "web") {
-    u.searchParams.set("udm", "14"); // just the links: no AI summary, no boxes, no ads
+  // Web view: the same answer with the summary hidden in the panel (Google's udm=14 page is a layout we can't read).
+  if (opts.view === "news") {
+    u.searchParams.set("tbm", "nws");
   }
   const tbs = [];
   if (opts.when) {
@@ -107,6 +108,12 @@ async function google(words, opts) {
     return { check: true, tabId, sent: googleQuery(words, opts) };
   }
   const [page] = await browser.tabs.executeScript(tabId, { file: "google-read.js" });
+  if (opts.debug) {
+    // Tests only: a sample of Google's page, to see a layout the reader doesn't know yet.
+    [page.sample] = await browser.tabs.executeScript(tabId, {
+      code: `[...document.querySelectorAll("a[href^='/url'], a[href^='/goto'], a[href^='http']")].slice(0, 30).map(a => { let e = a; for (let i = 0; i < 3 && e.parentElement; i++) e = e.parentElement; return e.outerHTML.replace(/<(style|script|svg)[\\s\\S]*?<\\/\\1>/g, "").slice(0, 700); }).join("\\n----\\n")`,
+    });
+  }
   return { ...page, sent: googleQuery(words, opts) };
 }
 
@@ -138,6 +145,134 @@ async function duck(words) {
     });
   }
   return { results: results.slice(0, 10) };
+}
+
+// Looking inside a result: the page is fetched once as plain text (no scripts run, no cookies sent) and read for
+// what sites label for Google and Facebook (picture, kind, author, date, paywall), its length (read time) and its
+// junk (scripts, ad and tracker companies, size). Never Google: only the result's own page.
+const TRACKERS =
+  /(doubleclick|googlesyndication|googletagmanager|google-analytics|googleadservices|adservice\.google|facebook\.net|connect\.facebook|amazon-adsystem|taboola|outbrain|criteo|scorecardresearch|quantserve|quantcast|adnxs|rubiconproject|pubmatic|moatads|hotjar|chartbeat|parsely|permutive|tiktok|ads-twitter|bat\.bing|clarity\.ms|segment\.(com|io)|optimizely|branch\.io|onetrust|cookielaw|teads|sharethrough|openx|indexww|casalemedia|33across|yieldmo|gumgum|media\.net|revcontent|mgid|smartadserver|adsafeprotected|doubleverify|krxd|bluekai|demdex|omtrdc|adsrvr|liadm|id5-sync|lotame|crwdcntrl|tapad|rlcdn|agkn|piano\.io|tinypass|newrelic|nr-data|sentry-cdn|cxense|blueconic|mparticle|amplitude|mixpanel|heap(analytics)?|fullstory|pinimg|licdn|snap\.licdn|reddit\.com\/static\/pixel)/i;
+
+// The kinds a page can say it is (schema.org and Open Graph), in plain words.
+const KINDS = {
+  NewsArticle: "News", ReportageNewsArticle: "News", AnalysisNewsArticle: "News", LiveBlogPosting: "News",
+  OpinionNewsArticle: "Opinion", BlogPosting: "Blog", Article: "Article", TechArticle: "Article",
+  ScholarlyArticle: "Research", Product: "Shop", ProductGroup: "Shop", Offer: "Shop", VideoObject: "Video",
+  Recipe: "Recipe", DiscussionForumPosting: "Forum", QAPage: "Forum", Event: "Event", JobPosting: "Job",
+};
+
+// What the address alone says, before (or without) looking inside.
+function kindOfHost(host) {
+  if (/(^|\.)(gov|gc\.ca|canada\.ca|gov\.[a-z]{2}|gouv\.[a-z.]+|europa\.eu)$/.test(host)) return "Government";
+  if (/wikipedia\.org$|britannica\.com$/.test(host)) return "Encyclopedia";
+  if (/(reddit|quora|stackexchange|stackoverflow)\.com$/.test(host)) return "Forum";
+  if (/(youtube\.com|youtu\.be|vimeo\.com|tiktok\.com)$/.test(host)) return "Video";
+  if (/(amazon|ebay|walmart|etsy|bestbuy|homedepot|costco)\.[a-z.]+$/.test(host)) return "Shop";
+  if (/(^|\.)edu$|(^|\.)ac\.[a-z]{2}$|arxiv\.org$|nih\.gov$/.test(host)) return "Research";
+  return "";
+}
+
+const site2 = host => host.split(".").slice(-2).join(".");
+
+function ldObjects(doc) {
+  const out = [];
+  const add = o => {
+    if (Array.isArray(o)) {
+      o.forEach(add);
+    } else if (o && typeof o === "object") {
+      out.push(o);
+      if (o["@graph"]) add(o["@graph"]);
+    }
+  };
+  for (const el of doc.querySelectorAll('script[type="application/ld+json"]')) {
+    try {
+      add(JSON.parse(el.textContent));
+    } catch {}
+  }
+  return out;
+}
+
+async function enrich(url) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 8000);
+  try {
+    const r = await fetch(url, { credentials: "omit", signal: ctl.signal, headers: { Accept: "text/html,*/*;q=0.5" } });
+    const type = r.headers.get("content-type") || "";
+    const host = new URL(r.url).hostname.replace(/^www\./, "");
+    if (!/html/.test(type)) {
+      return { kind: /pdf/.test(type) ? "PDF" : kindOfHost(host), kb: Math.round((+r.headers.get("content-length") || 0) / 1024) || null };
+    }
+    const html = (await r.text()).slice(0, 4000000);
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    // A tiny page with no title is a site turning the look away (Forbes does), not the page.
+    if (html.length < 3000 && !doc.title) {
+      return { failed: "the site turned the look away", kind: kindOfHost(host) };
+    }
+    const meta = n => doc.querySelector(`meta[property="${n}"], meta[name="${n}"]`)?.getAttribute("content") || "";
+    const ld = ldObjects(doc);
+    const typed = ld.find(o => [].concat(o["@type"] || []).some(t => KINDS[t]));
+    const ogType = meta("og:type");
+
+    let kind = typed ? KINDS[[].concat(typed["@type"]).find(t => KINDS[t])] : "";
+    kind ||= kindOfHost(host);
+    kind ||= /^video/.test(ogType) ? "Video" : ogType === "product" ? "Shop" : ogType === "article" ? "Article" : "";
+
+    const abs = u => {
+      try {
+        return u ? new URL(u, r.url).href : "";
+      } catch {
+        return "";
+      }
+    };
+    const ldImage = [].concat(typed?.image || [])[0];
+    const picture = abs(meta("og:image") || meta("twitter:image") || (typeof ldImage === "string" ? ldImage : ldImage?.url));
+    const published = typed?.datePublished || meta("article:published_time") || doc.querySelector("time[datetime]")?.getAttribute("datetime") || "";
+    const authors = [].concat(typed?.author || []).map(a => (typeof a === "string" ? a : a?.name)).filter(Boolean);
+    const author = authors.slice(0, 2).join(", ") || meta("author");
+    const free = ld.find(o => "isAccessibleForFree" in o)?.isAccessibleForFree;
+    const paywall = free === false || /^false$/i.test(String(free)) || /locked|metered|subscriber/i.test(meta("article:content_tier"));
+
+    // Junk: every script, the companies they come from, and frames.
+    const own = site2(host);
+    const hosts = new Set();
+    const trackers = new Set();
+    let scripts = 0;
+    for (const el of doc.querySelectorAll("script, iframe")) {
+      if (el.tagName === "SCRIPT" && /json/.test(el.type)) continue;
+      scripts++;
+      const src = el.getAttribute("src");
+      if (!src) continue;
+      let h;
+      try {
+        h = new URL(src, r.url).hostname;
+      } catch {
+        continue;
+      }
+      if (site2(h) !== own) hosts.add(site2(h));
+      if (TRACKERS.test(h + new URL(src, r.url).pathname)) trackers.add(site2(h));
+    }
+    // Inline scripts name tracker companies too (tag managers load the rest later).
+    for (const m of html.matchAll(/(googletagmanager|google-analytics|doubleclick|facebook\.net|amazon-adsystem|taboola|outbrain|criteo|hotjar|chartbeat|permutive|piano\.io|adnxs|scorecardresearch)/gi)) {
+      trackers.add(m[1].toLowerCase());
+    }
+    const kb = Math.round(html.length / 1024);
+    const score = Math.min(100, Math.round(Math.min(kb / 25, 25) + Math.min(trackers.size * 6, 45) + Math.min(hosts.size * 2, 20) + Math.min(scripts / 8, 10)));
+
+    // Read time: the article's words (or the main part's), at 230 a minute.
+    for (const el of doc.querySelectorAll("script, style, noscript, nav, header, footer, aside, form")) el.remove();
+    const body = doc.querySelector("[itemprop='articleBody'], article, main, [role='main']") || doc.body;
+    const words = (body?.textContent.match(/[\p{L}\p{N}']+/gu) || []).length;
+
+    return {
+      picture, kind, published, author, paywall,
+      readMin: words >= 120 ? Math.max(1, Math.round(words / 230)) : 0,
+      junk: { score, kb, scripts, hosts: hosts.size, trackers: [...trackers].slice(0, 12) },
+    };
+  } catch (e) {
+    return { failed: String(e.name === "AbortError" ? "too slow" : e.message || e) };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 // Private: a throwaway container, signed out; it's removed (cookies and all) when Private is switched off.
@@ -209,6 +344,10 @@ function handle(msg) {
       return google(msg.words, msg.opts || {});
     case "duck":
       return duck(msg.words);
+    case "enrich":
+      return enrich(msg.url);
+    case "kindOfHost":
+      return Promise.resolve(kindOfHost(msg.host));
     case "open":
       return open(msg.url);
     case "endPrivate":

@@ -154,6 +154,16 @@
       date = m[1];
       snippet = snippet.slice(m[0].length);
     }
+    // News layout: "Reuters · 1 day ago" (or only "2 hours ago") where the site's name goes.
+    const AGE = /(\d+ (?:minutes?|hours?|days?|weeks?|months?|years?) ago|[A-Z][a-z]{2} \d{1,2}, \d{4})$/;
+    const both = site.match(new RegExp("^(.*?)\\s*·\\s*" + AGE.source));
+    if (both) {
+      site = both[1];
+      date ||= both[2];
+    } else if (AGE.test(site) && site.match(AGE)[0] === site) {
+      date ||= site;
+      site = "";
+    }
     const host = t.real ? hostOf(t.href) : address.split(/[\s/›]/)[0];
     results.push({
       title,
