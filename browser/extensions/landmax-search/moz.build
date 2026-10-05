@@ -1,0 +1,3 @@
+# Landmax Search: the Search panel (Library's Left zone), a built-in add-on. See landmax-library docs/search-plan.md.
+
+JAR_MANIFESTS += ["jar.mn"]

@@ -9,6 +9,7 @@ DIRS += [
     "pictureinpicture",
     "search-detection",
     "newtab",
+    "landmax-search",  # Landmax: the Search panel (landmax/CHANGES.md)
 ]
 
 JAR_MANIFESTS += ["jar.mn"]

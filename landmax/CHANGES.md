@@ -26,3 +26,9 @@ help, terms and privacy links in About are hidden by `browser/branding/landmax/c
 **Left for later steps:** the default bookmarks (Mozilla's; step 4, `NoDefaultBookmarks` policy); onboarding,
 telemetry pages, "More from Mozilla" (the Out list, step 5); the sidebar and Firefox View foxes (Landmax does tabs,
 hidden later); the Mozilla account's fox avatar (Mozilla's own service); DevTools texts (for developers, and true).
+
+## The Search panel (2026-10-05)
+
+| File | Change | Why |
+| --- | --- | --- |
+| `browser/extensions/moz.build` | Adds `landmax-search` to `DIRS` | Builds our Search add-on in (ours: `browser/extensions/landmax-search/`) |

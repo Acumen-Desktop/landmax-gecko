@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Search</title>
+  <link rel="stylesheet" href="search.css">
+</head>
+<body>
+  <header>
+    <label class="private" title="Signed out, in a throwaway container, nothing remembered">
+      <input type="checkbox" id="private"> <span class="switch"></span> Private
+    </label>
+    <form id="form" autocomplete="off">
+      <input id="words" type="search" placeholder="Search" aria-label="Search" autofocus>
+    </form>
+    <div id="sent" class="sent" hidden></div>
+
+    <nav class="views" aria-label="What to show">
+      <button type="button" data-view="summary">Summary</button>
+      <button type="button" data-view="web">Web</button>
+    </nav>
+
+    <div class="tools">
+      <label>When
+        <select id="when">
+          <option value="">Any time</option>
+          <option value="h">Past hour</option>
+          <option value="d">Past day</option>
+          <option value="w">Past week</option>
+          <option value="m">Past month</option>
+          <option value="y">Past year</option>
+        </select>
+      </label>
+      <label title="Google won't change your words"><input type="checkbox" id="exact"> Exactly as typed</label>
+    </div>
+  </header>
+
+  <main id="out">
+    <p class="hint">Type what you're looking for. Questions get Google's summary; a few words get plain links.</p>
+  </main>
+
+  <template id="card">
+    <article class="card">
+      <button type="button" class="open">
+        <span class="site"><img alt=""><span class="name"></span><span class="date"></span></span>
+        <span class="title"></span>
+        <span class="snippet"></span>
+        <span class="address"></span>
+      </button>
+      <div class="card-tools">
+        <button type="button" class="prefer" title="Show this site first from now on">Prefer this site</button>
+        <button type="button" class="never" title="Never show this site again">Never show</button>
+      </div>
+    </article>
+  </template>
+
+  <script src="search.js"></script>
+</body>
+</html>

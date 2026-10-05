@@ -74,3 +74,6 @@ pref("extensions.systemAddon.update.url", "");
 pref("extensions.getAddons.cache.enabled", false);
 // Kept, on purpose ("Just works"): Remote Settings' security lists (revoked certificates, blocked add-ons), translation
 // models, password rules and site fixes; the Wi-Fi sign-in check; web push; Widevine and OpenH264 (James: keep DRM).
+
+// Containers (separate logins per site): Search's Private mode, and later TPAs and raw vs clean (Firefox review: Just works).
+pref("privacy.userContext.enabled", true);

@@ -1,0 +1,2 @@
+browser.jar:
+    builtin-addons/landmax-search/ (extension/**)
