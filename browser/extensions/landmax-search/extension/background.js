@@ -346,6 +346,9 @@ function handle(msg) {
       return duck(msg.words);
     case "enrich":
       return enrich(msg.url);
+    case "classify":
+      // JEV, through Library's helper (it holds the key): the kind of page, for rows whose pages don't say.
+      return browser.runtime.sendNativeMessage("global.landmax.search", { classify: msg.rows });
     case "kindOfHost":
       return Promise.resolve(kindOfHost(msg.host));
     case "open":

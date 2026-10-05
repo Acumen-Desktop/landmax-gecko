@@ -146,6 +146,19 @@ async function fill() {
       if (s === state) draw();
     })
   );
+  // Kinds the pages didn't give: one question to JEV for all of them (never in Private: it would learn the search).
+  const unknown = s.rows.filter(r => !r.kind && r.title);
+  if (unknown.length && !$("private").checked) {
+    try {
+      const got = await ask({ type: "classify", rows: unknown.map((r, i) => ({ id: i, title: r.title, site: r.site, snippet: r.snippet })) });
+      for (const [i, k] of Object.entries(got?.kinds || {})) {
+        unknown[+i].kind = k.kind;
+        unknown[+i].kindBy = "JEV";
+      }
+    } catch (e) {
+      console.error("Landmax Search: JEV", e);
+    }
+  }
   if (s === state) draw();
   if (DEBUG) console.log("LANDMAX-STATE " + btoa(unescape(encodeURIComponent(JSON.stringify(s)))));
 }
@@ -389,6 +402,7 @@ function row(r) {
   if (r.kind) {
     const k = el("span", "kind", r.kind);
     k.dataset.k = r.kind;
+    k.title = r.kindBy === "JEV" ? "Kind guessed by JEV from the title and snippet" : "Kind as the page itself says";
     kind.append(k);
   }
 
