@@ -42,3 +42,35 @@ pref("datareporting.policy.firstRunURL", "");
 pref("browser.shell.checkDefaultBrowser", false);
 // Our version, shown in About as "Reader 0.2 (Gecko 159.0a1, date)" (rebrand plan, step 0 question 7).
 pref("landmax.reader.version", "0.2");
+
+// --- The "Out" list, first pass (rebrand plan, step 5) ---------------------------------------------------------
+// From a 10-minute watch of a fresh Reader (2026-10-05). Defaults, not locked: a person can turn a service back on.
+// Studies and remote experiments (Normandy, Nimbus), and the "which country are you in" lookup Normandy makes.
+pref("app.normandy.enabled", false);
+pref("app.normandy.api_url", "");
+pref("app.shield.optoutstudies.enabled", false);
+pref("messaging-system.rsexperimentloader.enabled", false);
+// Merino (Mozilla's suggestion server): it got the town for New Tab's weather. Weather and sponsored suggestions off.
+pref("browser.urlbar.merino.endpointURL", "");
+pref("browser.urlbar.quicksuggest.enabled", false);
+pref("browser.urlbar.suggest.weather", false);
+pref("browser.urlbar.suggest.quicksuggest.sponsored", false);
+pref("browser.urlbar.suggest.quicksuggest.nonsponsored", false);
+pref("browser.newtabpage.activity-stream.showWeather", false);
+pref("browser.newtabpage.activity-stream.system.showWeather", false);
+// New Tab's stories and sponsored tiles (New Tab becomes the Library page later).
+pref("browser.newtabpage.activity-stream.feeds.section.topstories", false);
+pref("browser.newtabpage.activity-stream.showSponsored", false);
+pref("browser.newtabpage.activity-stream.showSponsoredTopSites", false);
+pref("browser.newtabpage.activity-stream.feeds.telemetry", false);
+pref("browser.newtabpage.activity-stream.telemetry", false);
+// The region lookup (location.services.mozilla.com): Library knows where it is.
+pref("browser.region.network.url", "");
+pref("browser.region.update.enabled", false);
+// Mozilla's silent updates to built-in add-ons; they come with Reader's own updates instead.
+pref("extensions.systemAddon.update.enabled", false);
+pref("extensions.systemAddon.update.url", "");
+// Asking the add-on store about the built-in themes at every start.
+pref("extensions.getAddons.cache.enabled", false);
+// Kept, on purpose ("Just works"): Remote Settings' security lists (revoked certificates, blocked add-ons), translation
+// models, password rules and site fixes; the Wi-Fi sign-in check; web push; Widevine and OpenH264 (James: keep DRM).
