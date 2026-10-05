@@ -1,0 +1,11 @@
+# Landmax Reader on Library: daily work on the iMac (artifact build).
+# Mozilla's ready-made engine is downloaded; only our front end (JS, CSS, branding) is built.
+# Full builds (engine changes) use mozconfig.full on the HP PC. Rebrand plan, step 1.
+ac_add_options --enable-application=browser
+ac_add_options --enable-artifact-builds
+mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/obj-landmax-artifact
+
+# No telemetry or data reporting
+mk_add_options MOZ_TELEMETRY_REPORTING=
+mk_add_options MOZ_DATA_REPORTING=
+ac_add_options --with-branding=browser/branding/landmax

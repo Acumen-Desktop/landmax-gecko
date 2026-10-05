@@ -1,0 +1,39 @@
+# Landmax Reader on Library: a full build (the engine's C++ too), for the HP PC.
+# Use: MOZCONFIG=landmax/mozconfig.full ./mach build. Rebrand plan, step 1 (James 2026-10-05: yes to all).
+# Daily work uses landmax/mozconfig.artifact on the iMac instead (minutes, not hours).
+ac_add_options --enable-application=browser
+mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/obj-landmax-full
+ac_add_options --with-branding=browser/branding/landmax
+ac_add_options --enable-bootstrap
+
+# Who we are. In a full build these are compiled in; artifact builds get them from landmax/application.ini.
+ac_add_options --with-app-name=landmax-reader
+export MOZ_APP_BASENAME=landmax-reader
+export MOZ_APP_REMOTINGNAME=global.landmax.reader
+export MOZ_APP_PROFILE=landmax-reader
+export MOZ_DISTRIBUTION_ID=global.landmax.reader
+export MOZ_SOURCE_REPO=https://github.com/Acumen-Desktop/landmax-gecko
+# The user agent stays "Firefox/159" (step 0, question 6): nothing to set.
+
+# Optimised release build
+ac_add_options --enable-release
+ac_add_options --enable-optimize
+ac_add_options --enable-hardening
+ac_add_options --enable-rust-simd
+ac_add_options --disable-debug
+ac_add_options --disable-tests
+ac_add_options --with-ccache=sccache
+ac_add_options --enable-install-strip
+
+# DRM on (James: keep, so streaming works). Google's Widevine player downloads at run time, as in Firefox.
+ac_add_options --enable-eme=widevine
+# No crash reporter (our own crash log instead), no parental controls.
+ac_add_options --disable-crashreporter
+ac_add_options --disable-parental-controls
+# Speech stays ON: "Read it to me" (the narrator) needs it. The Mac Reader turns it off; Library doesn't.
+# Updates come through Library's package server (pacman), never Firefox's updater.
+ac_add_options --disable-updater
+
+# No telemetry or data reporting
+mk_add_options MOZ_TELEMETRY_REPORTING=
+mk_add_options MOZ_DATA_REPORTING=
