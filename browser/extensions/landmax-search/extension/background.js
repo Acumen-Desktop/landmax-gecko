@@ -263,8 +263,9 @@ async function enrich(url) {
     const body = doc.querySelector("[itemprop='articleBody'], article, main, [role='main']") || doc.body;
     const words = (body?.textContent.match(/[\p{L}\p{N}']+/gu) || []).length;
 
+    const description = (meta("og:description") || meta("description") || "").slice(0, 300);
     return {
-      picture, kind, published, author, paywall,
+      picture, kind, published, author, paywall, description,
       readMin: words >= 120 ? Math.max(1, Math.round(words / 230)) : 0,
       junk: { score, kb, scripts, hosts: hosts.size, trackers: [...trackers].slice(0, 12) },
     };
@@ -346,9 +347,10 @@ function handle(msg) {
       return duck(msg.words);
     case "enrich":
       return enrich(msg.url);
-    case "classify":
-      // JEV, through Library's helper (it holds the key): the kind of page, for rows whose pages don't say.
-      return browser.runtime.sendNativeMessage("global.landmax.search", { classify: msg.rows });
+    case "judge":
+      // JEV, through Library's helper (it holds the key): opinion or reporting, selling or not, and the kind of
+      // page where the page doesn't say. One call per search.
+      return browser.runtime.sendNativeMessage("global.landmax.search", { judge: msg.rows });
     case "kindOfHost":
       return Promise.resolve(kindOfHost(msg.host));
     case "open":

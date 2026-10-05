@@ -146,18 +146,37 @@ async function fill() {
       if (s === state) draw();
     })
   );
-  // Kinds the pages didn't give: one question to JEV for all of them (never in Private: it would learn the search).
-  const unknown = s.rows.filter(r => !r.kind && r.title);
-  if (unknown.length && !$("private").checked) {
+  // JEV, one call for the whole search (never in Private: it would learn the search): opinion or reporting,
+  // selling or not, and the kind where the page didn't say.
+  if (!$("private").checked && s.rows.length) {
+    s.judging = true;
+    if (s === state) draw();
     try {
-      const got = await ask({ type: "classify", rows: unknown.map((r, i) => ({ id: i, title: r.title, site: r.site, snippet: r.snippet })) });
-      for (const [i, k] of Object.entries(got?.kinds || {})) {
-        unknown[+i].kind = k.kind;
-        unknown[+i].kindBy = "JEV";
+      const got = await ask({
+        type: "judge",
+        rows: s.rows.map((r, i) => ({
+          id: i,
+          title: r.title,
+          site: r.site,
+          snippet: r.snippet,
+          description: r.inside?.description || "",
+          kind: r.kind,
+          needKind: !r.kind,
+        })),
+      });
+      for (const [i, j] of Object.entries(got?.rows || {})) {
+        const r = s.rows[+i];
+        r.opinion = j.opinion;
+        r.selling = j.selling;
+        if (j.kind && !r.kind) {
+          r.kind = j.kind;
+          r.kindBy = "JEV";
+        }
       }
     } catch (e) {
       console.error("Landmax Search: JEV", e);
     }
+    s.judging = false;
   }
   if (s === state) draw();
   if (DEBUG) console.log("LANDMAX-STATE " + btoa(unescape(encodeURIComponent(JSON.stringify(s)))));
@@ -208,6 +227,8 @@ const SORTS = {
   read: r => (r.inside?.readMin ? r.inside.readMin : 1e9),
   junk: r => r.inside?.junk?.score ?? 1e9,
   kind: r => r.kind || "~",
+  tone: r => r.opinion ?? 2,
+  selling: r => r.selling ?? 2,
   site: r => (r.site || "").toLowerCase(),
 };
 
@@ -220,6 +241,8 @@ function visible() {
   if (filters.has("free")) rows = rows.filter(r => !r.inside?.paywall);
   if (filters.has("clean")) rows = rows.filter(r => r.inside?.junk && r.inside.junk.score < 25);
   if (filters.has("both")) rows = rows.filter(r => r.g && r.d);
+  if (filters.has("reporting")) rows = rows.filter(r => r.opinion != null && r.opinion < 0.5);
+  if (filters.has("notselling")) rows = rows.filter(r => r.selling != null && r.selling < 0.5);
   const f = SORTS[sort.key];
   const pref = r => (kept.prefer.includes(r.host) ? 0 : 1);
   return rows.sort((a, b) => {
@@ -259,6 +282,10 @@ function drawFilters() {
   if (kept.inside) {
     chip("free", "Free to read");
     chip("clean", "Clean only");
+  }
+  if (state.rows.some(r => r.opinion != null)) {
+    chip("reporting", "Reporting only");
+    chip("notselling", "Not selling");
   }
   if (state.duck === "done") chip("both", "Both engines");
   if (filters.size) {
@@ -374,6 +401,8 @@ function grid(rows) {
     header("Age", "age", "num"),
     header("Read", "read", "num c-read"),
     header("Junk", "junk", "num"),
+    header("Tone", "tone", "c-tone"),
+    header("Selling", "selling", "c-sell"),
     header("Found", "rank", "c-found"),
     header("", null)
   );
@@ -427,6 +456,30 @@ function row(r) {
     junk.title = "Couldn't look inside: " + inside.failed;
   }
 
+  // JEV's judgements, with how sure it is.
+  const tone = el("td", "c-tone");
+  if (r.opinion != null) {
+    const t = el("span", "tone " + (r.opinion >= 0.5 ? "opinion" : "report"), r.opinion >= 0.5 ? "Opinion" : "Reporting");
+    t.title = `JEV: ${Math.round(r.opinion * 100)}% likely to be opinion`;
+    tone.append(t);
+  } else if (state.judging) {
+    tone.append(el("span", "pending", "…"));
+  }
+  const sell = el("td", "c-sell");
+  if (r.selling != null) {
+    if (r.selling >= 0.5) {
+      const t = el("span", "selling", "$ Selling");
+      t.title = `JEV: ${Math.round(r.selling * 100)}% likely to be selling something`;
+      sell.append(t);
+    } else {
+      const t = el("span", "pending", "—");
+      t.title = `JEV: ${Math.round(r.selling * 100)}% likely to be selling something`;
+      sell.append(t);
+    }
+  } else if (state.judging) {
+    sell.append(el("span", "pending", "…"));
+  }
+
   const found = el("td", "c-found");
   const f = el("span", "found");
   if (r.g) f.append(el("span", "g", "G" + r.g));
@@ -453,7 +506,7 @@ function row(r) {
     };
     acts.append(p, " ", n);
   }
-  tr.append(pic, what, kind, age, read, junk, found, acts);
+  tr.append(pic, what, kind, age, read, junk, tone, sell, found, acts);
   return tr;
 }
 
@@ -470,6 +523,8 @@ function wall(rows) {
       k.dataset.k = r.kind;
       meta.append(k);
     }
+    if (r.opinion >= 0.5) meta.append(el("span", "tone opinion", "Opinion"));
+    if (r.selling >= 0.5) meta.append(el("span", "selling", "$"));
     body.append(el("div", "title", r.title), meta);
     t.append(thumb(r, true), body);
     w.append(t);

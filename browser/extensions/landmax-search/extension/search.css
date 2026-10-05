@@ -222,14 +222,27 @@ main { padding: 14px 18px 60px; }
 .acts button:hover { color: var(--accent); border-color: var(--accent); }
 .acts button.never:hover { color: var(--bad); border-color: var(--bad); }
 
+/* JEV's columns */
+.tone, .selling { display: inline-block; font-size: 12.5px; padding: 1px 9px; border-radius: 999px; white-space: nowrap; }
+.tone.opinion { background: color-mix(in srgb, #ff9b4e 18%, var(--panel)); color: #ffbb85; }
+.tone.report { color: var(--faint); padding-left: 0; }
+.selling { background: color-mix(in srgb, #f0c74f 20%, var(--panel)); color: #f3d77f; font-weight: 600; }
+.pending { color: var(--faint); }
+@media (prefers-color-scheme: light) {
+  .tone.opinion, .selling { color: var(--ink); }
+}
+
 /* Narrow zone: fewer columns */
+@media (max-width: 1000px) {
+  .grid .c-found { display: none; }
+}
 @media (max-width: 760px) {
-  .grid .c-found, .grid .c-read { display: none; }
+  .grid .c-read, .grid .c-sell { display: none; }
   .pic { width: 84px; }
   .thumb { width: 76px; height: 50px; }
 }
 @media (max-width: 560px) {
-  .grid .c-kind { display: none; }
+  .grid .c-kind, .grid .c-tone { display: none; }
 }
 
 /* ---------- Picture wall ---------- */
