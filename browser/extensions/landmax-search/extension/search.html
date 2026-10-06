@@ -6,46 +6,65 @@
   <title>Search</title>
   <link rel="stylesheet" href="search.css">
 </head>
-<body>
-  <header>
-    <form id="form" class="bar" autocomplete="off">
-      <label class="private" title="Private: signed out, in a throwaway container, nothing remembered">
-        <input type="checkbox" id="private"><span class="switch"></span><span>Private</span>
-      </label>
-      <input id="words" type="search" placeholder="Search" aria-label="Search" autofocus>
-      <button type="submit" class="go" aria-label="Search">Search</button>
-    </form>
-    <div id="sent" class="sent" hidden></div>
-
-    <div class="tools">
-      <div class="seg" role="group" aria-label="What to show">
-        <button type="button" data-view="summary">Summary</button>
-        <button type="button" data-view="web">Web</button>
-        <button type="button" data-view="news">News</button>
-      </div>
-      <select id="when" aria-label="When">
-        <option value="">Any time</option>
-        <option value="h">Past hour</option>
-        <option value="d">Past day</option>
-        <option value="w">Past week</option>
-        <option value="m">Past month</option>
-        <option value="y">Past year</option>
-      </select>
-      <label class="check" title="Google won't change your words"><input type="checkbox" id="exact"> Exact words</label>
-      <label class="check" title="Look inside each result for its picture, read time and junk. Each site sees one visit from this computer, with no cookies."><input type="checkbox" id="inside" checked> Look inside</label>
-      <div class="seg right" role="group" aria-label="Layout">
-        <button type="button" data-look="auto" title="Cards when the window is tall, a grid when it is wide">Auto</button>
-        <button type="button" data-look="grid" title="A grid you sort and filter like a spreadsheet">Grid</button>
-        <button type="button" data-look="cards" title="Picture cards">Cards</button>
-      </div>
+<body class="home">
+  <header id="top">
+    <h1 class="mark">Search</h1>
+    <div class="line">
+      <form id="form" class="box" autocomplete="off" role="search">
+        <svg class="glass" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg>
+        <input id="words" type="search" placeholder="Search Google" aria-label="Search" autofocus>
+        <label class="priv" title="Private: signed out of Google, in a throwaway container, nothing remembered">
+          <input type="checkbox" id="private"> Private
+        </label>
+      </form>
+      <button type="button" id="refine" class="quiet" aria-expanded="false" aria-controls="pop">Refine</button>
     </div>
-    <div id="stats" class="stats" hidden></div>
-    <div id="filters" class="filters" hidden></div>
-    <div id="views" class="views" hidden></div>
+    <div id="active" class="active" hidden></div>
+
+    <div id="pop" class="pop" hidden>
+      <section>
+        <h3>Ask Google for</h3>
+        <label class="row">When
+          <select id="when">
+            <option value="">Any time</option>
+            <option value="h">Past hour</option>
+            <option value="d">Past day</option>
+            <option value="w">Past week</option>
+            <option value="m">Past month</option>
+            <option value="y">Past year</option>
+          </select>
+        </label>
+        <label class="row"><input type="checkbox" id="exact"> Exact words <small>Google won't change them</small></label>
+        <label class="row"><input type="checkbox" id="news"> News only</label>
+        <button type="button" id="again" class="primary" hidden>Search again</button>
+      </section>
+      <section>
+        <h3>Show</h3>
+        <label class="row">Order
+          <select id="order">
+            <option value="rank">Best match</option>
+            <option value="age">Newest first</option>
+            <option value="read">Shortest read</option>
+            <option value="junk">Least junk</option>
+          </select>
+        </label>
+        <label class="row"><input type="checkbox" data-only="reporting"> Reporting only <small>no opinion pieces</small></label>
+        <label class="row"><input type="checkbox" data-only="notselling"> Not selling anything</label>
+        <label class="row"><input type="checkbox" data-only="free"> Free to read</label>
+        <label class="row"><input type="checkbox" data-only="clean"> Clean pages only <small>no ad or tracker companies</small></label>
+      </section>
+      <section>
+        <h3>Results</h3>
+        <label class="row"><input type="checkbox" id="inside" checked> Look inside each page
+          <small>for its picture, read time and junk; each site sees one visit, with no cookies</small></label>
+        <div id="sites"></div>
+      </section>
+    </div>
   </header>
 
-  <main id="out">
-    <p class="hint">Ask a question for Google's summary, or a few words for plain results. Sort and filter the results like a spreadsheet.</p>
+  <main id="main" hidden>
+    <nav id="list" class="list" aria-label="Results"></nav>
+    <article id="detail" class="detail" aria-live="polite"></article>
   </main>
 
   <script src="search.js"></script>

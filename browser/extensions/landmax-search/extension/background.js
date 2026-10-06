@@ -107,7 +107,18 @@ async function google(words, opts) {
   if (new URL(tab.url).pathname.startsWith("/sorry")) {
     return { check: true, tabId, sent: googleQuery(words, opts) };
   }
-  const [page] = await browser.tabs.executeScript(tabId, { file: "google-read.js" });
+  let [page] = await browser.tabs.executeScript(tabId, { file: "google-read.js" });
+  // Google sometimes sends a holding page first ("click here if you are not redirected within a few seconds"),
+  // which moves on to the answer by itself: wait for that, then read again.
+  for (let i = 0; i < 2 && !page.results.length && !page.summary; i++) {
+    const [holding] = await browser.tabs.executeScript(tabId, { code: "/not redirected/i.test(document.body?.innerText || '')" });
+    if (!holding) break;
+    await loaded(tabId, 8000).catch(() => {});
+    if (new URL((await browser.tabs.get(tabId)).url).pathname.startsWith("/sorry")) {
+      return { check: true, tabId, sent: googleQuery(words, opts) };
+    }
+    [page] = await browser.tabs.executeScript(tabId, { file: "google-read.js" });
+  }
   // Nothing read: keep Google's page on this computer (Library's helper writes it to ~/.cache/landmax), so the
   // reader can be taught the new layout, and tell the panel.
   if (!page.results.length && !page.summary) {
