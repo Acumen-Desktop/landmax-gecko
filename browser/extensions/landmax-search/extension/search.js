@@ -185,11 +185,18 @@ async function fill() {
   await Promise.all(
     s.rows.map(async row => {
       row.kind ||= await ask({ type: "kindOfHost", host: row.host || "" });
-      if (!kept.inside || row.inside || !/^https?:/.test(row.href) || /google\.[a-z.]+\/goto/.test(row.href)) return;
+      if (!kept.inside || row.inside || !/^https?:/.test(row.href)) return;
       row.inside = "loading";
       if (s === state) drawRows();
       const got = await ask({ type: "enrich", url: row.href });
       row.inside = got;
+      // A coded Google link now has its real address: open it directly from here on.
+      if (got.realUrl && /google\.[a-z.]+\/(url|goto)/.test(row.href)) {
+        row.href = got.realUrl;
+        row.host = new URL(got.realUrl).hostname.replace(/^www\./, "");
+        if (!row.site || /(^|\.)google\.[a-z.]+$/.test(row.site)) row.site = row.host;
+        row.key = keyOf(got.realUrl);
+      }
       if (got.kind) row.kind = got.kind;
       if (row.age == null && got.published) row.age = ageOf("", got.published);
       if (s === state) draw();

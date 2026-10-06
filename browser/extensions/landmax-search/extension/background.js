@@ -201,9 +201,18 @@ function ldObjects(doc) {
 
 async function enrich(url) {
   const ctl = new AbortController();
-  const timer = setTimeout(() => ctl.abort(), 8000);
+  const timer = setTimeout(() => ctl.abort(), 10000);
   try {
-    const r = await fetch(url, { credentials: "omit", signal: ctl.signal, headers: { Accept: "text/html,*/*;q=0.5" } });
+    let r = await fetch(url, { credentials: "omit", signal: ctl.signal, headers: { Accept: "text/html,*/*;q=0.5" } });
+    // A coded Google link: the fetch followed it to the page, or Google answered with its "Redirect notice" page,
+    // whose link is the real address. Either way the row learns its real address (realUrl).
+    if (/(^|\.)google\.[a-z.]+$/.test(new URL(r.url).hostname)) {
+      const notice = new DOMParser().parseFromString(await r.text(), "text/html");
+      const out = [...notice.querySelectorAll("a[href]")].map(a => a.href).find(h => /^https?:/.test(h) && !/(^|\.)google\.[a-z.]+\//.test(h));
+      if (!out) return { failed: "Google didn't say where this result goes" };
+      r = await fetch(out, { credentials: "omit", signal: ctl.signal, headers: { Accept: "text/html,*/*;q=0.5" } });
+    }
+    const realUrl = r.url;
     const type = r.headers.get("content-type") || "";
     const host = new URL(r.url).hostname.replace(/^www\./, "");
     if (!/html/.test(type)) {
@@ -273,6 +282,7 @@ async function enrich(url) {
 
     const description = (meta("og:description") || meta("description") || "").slice(0, 300);
     return {
+      realUrl,
       picture, kind, published, author, paywall, description,
       readMin: words >= 120 ? Math.max(1, Math.round(words / 230)) : 0,
       junk: { score, kb, scripts, hosts: hosts.size, trackers: [...trackers].slice(0, 12) },

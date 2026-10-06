@@ -14,8 +14,10 @@
     const u = new URL(a.getAttribute("href"), location.href);
     if (/(^|\.)google\.[a-z.]+$/.test(u.hostname)) {
       if (u.pathname === "/url") {
+        // Usually the real address; with some Google cookies a code only Google can read (kept, followed later).
         const q = u.searchParams.get("q") || u.searchParams.get("url");
-        return q && /^https?:/.test(q) ? { href: q, real: true } : null;
+        if (!q) return null;
+        return /^https?:/.test(q) ? { href: q, real: true } : { href: u.href, real: false };
       }
       return u.pathname === "/goto" ? { href: u.href, real: false } : null;
     }
@@ -115,7 +117,9 @@
     if (cite) {
       address = clean(cite.textContent + " " + (cite.nextElementSibling?.textContent || ""));
     } else {
-      const line = [...a.querySelectorAll("div, span")].find(e => e.childElementCount === 0 && e.textContent.includes("›"));
+      // The line holding "›", else the first line in the link outside the title ("omarchy.org").
+      const leaves = [...a.querySelectorAll("div, span")].filter(e => e.childElementCount === 0 && !e.closest("h3") && clean(e.textContent));
+      const line = leaves.find(e => e.textContent.includes("›")) || leaves.find(e => /^[\w.-]+\.[a-z]{2,}(\s|$)/i.test(clean(e.textContent)));
       address = clean(line?.textContent) || hostOf(t.href);
     }
     address = address.replace(/^https?:\/\//, "").replace(/^www\./, "");
