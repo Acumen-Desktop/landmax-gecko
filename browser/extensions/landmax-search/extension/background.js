@@ -108,6 +108,13 @@ async function google(words, opts) {
     return { check: true, tabId, sent: googleQuery(words, opts) };
   }
   const [page] = await browser.tabs.executeScript(tabId, { file: "google-read.js" });
+  // Nothing read: keep Google's page on this computer (Library's helper writes it to ~/.cache/landmax), so the
+  // reader can be taught the new layout, and tell the panel.
+  if (!page.results.length && !page.summary) {
+    const [html] = await browser.tabs.executeScript(tabId, { code: "document.documentElement.outerHTML" });
+    browser.runtime.sendNativeMessage("global.landmax.search", { unreadable: html }).catch(() => {});
+    return { ...page, unreadable: true, sent: googleQuery(words, opts) };
+  }
   if (opts.debug) {
     // Tests only: a sample of Google's page, to see a layout the reader doesn't know yet.
     [page.sample] = await browser.tabs.executeScript(tabId, {
@@ -213,8 +220,9 @@ async function enrich(url) {
     const typed = ld.find(o => [].concat(o["@type"] || []).some(t => KINDS[t]));
     const ogType = meta("og:type");
 
-    let kind = typed ? KINDS[[].concat(typed["@type"]).find(t => KINDS[t])] : "";
-    kind ||= kindOfHost(host);
+    // What the address says wins (Wikipedia calls itself an "Article"; Encyclopedia is more use), then the page's label.
+    let kind = kindOfHost(host);
+    kind ||= typed ? KINDS[[].concat(typed["@type"]).find(t => KINDS[t])] : "";
     kind ||= /^video/.test(ogType) ? "Video" : ogType === "product" ? "Shop" : ogType === "article" ? "Article" : "";
 
     const abs = u => {
@@ -351,6 +359,8 @@ function handle(msg) {
       // JEV, through Library's helper (it holds the key): opinion or reporting, selling or not, and the kind of
       // page where the page doesn't say. One call per search.
       return browser.runtime.sendNativeMessage("global.landmax.search", { judge: msg.rows });
+    case "theme":
+      return browser.runtime.sendNativeMessage("global.landmax.search", { theme: true });
     case "kindOfHost":
       return Promise.resolve(kindOfHost(msg.host));
     case "open":

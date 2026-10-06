@@ -1,7 +1,7 @@
 "use strict";
-// The Search panel (docs/search-plan.md): Google's answer as a grid you can sort and filter. Every search starts
-// from a click or Enter; nothing runs on its own. Looking inside the results (pictures, read time, junk) happens
-// once per search, for its own results only.
+// The Search panel (docs/search-plan.md): Google's answer as a grid you sort and filter (a wide window) or as
+// picture cards (a tall one). Every search starts from a click or Enter; nothing runs on its own. Looking inside
+// the results (pictures, read time, junk) and JEV's judgements happen once per search, for its own results only.
 
 const $ = id => document.getElementById(id);
 const out = $("out");
@@ -11,22 +11,46 @@ const DEBUG = params.has("debug");
 
 // ---------- State ----------
 let view = params.get("view") || null; // "summary", "web", "news"; null = picked from the words
-let look = "grid"; // "grid" or "wall"
+let look = "auto"; // "auto", "grid" or "cards"
 let sort = { key: "rank", up: true };
-let filters = new Set(); // "kind:News", "age:d", "free", "clean", "both"
-let state = null; // { words, sent, summary, rows, ads, duck: "no" | "asking" | "done" }
+let filters = new Set(); // "kind:News", "age:d", "age:w", "free", "clean", "both", "reporting", "notselling"
+let state = null; // { words, view, summary, rows, ads, duck, judging }
 
-// "Never show" and "Prefer" sites, and saved views, kept on this computer.
-const kept = { never: [], prefer: [], views: [], inside: true };
-const ready = browser.storage.local.get(["never", "prefer", "views", "inside"]).then(s => {
+// "Never show" and "Prefer" sites, saved views and the switches, kept on this computer.
+const kept = { never: [], prefer: [], views: [], inside: true, look: "auto" };
+const ready = browser.storage.local.get(["never", "prefer", "views", "inside", "look"]).then(s => {
   kept.never = s.never || [];
   kept.prefer = s.prefer || [];
   kept.views = s.views || [];
   kept.inside = s.inside !== false;
+  look = kept.look = params.get("look") || s.look || "auto";
   $("inside").checked = kept.inside;
+  pressed(".seg [data-look]", b => b.dataset.look === look);
   drawViews();
 });
-const save = () => browser.storage.local.set({ never: kept.never, prefer: kept.prefer, views: kept.views, inside: kept.inside });
+const save = () =>
+  browser.storage.local.set({ never: kept.never, prefer: kept.prefer, views: kept.views, inside: kept.inside, look });
+
+// ---------- Library's colours ----------
+// The panel wears the person's Library theme (colors.toml, through Library's helper); its own colours otherwise.
+ask({ type: "theme" })
+  .then(({ colours: c } = {}) => {
+    if (!c || !c.background) return;
+    const set = (name, value) => value && document.documentElement.style.setProperty(name, value);
+    set("--bg", c.background);
+    set("--panel", c.lighter_background);
+    set("--raise", c.selection);
+    set("--line", c.muted || c.selection);
+    set("--line-soft", c.selection);
+    set("--ink", c.foreground);
+    set("--dim", c.dark_foreground);
+    set("--faint", `color-mix(in srgb, ${c.dark_foreground} 62%, ${c.background})`);
+    set("--accent", c.accent);
+    set("--accent-ink", c.darker_background || c.background);
+    for (const k of ["red", "orange", "yellow", "green", "cyan", "blue", "magenta"]) set("--" + k, c[k]);
+    document.documentElement.style.colorScheme = c.mode === "light" ? "light" : "dark";
+  })
+  .catch(() => {});
 
 // ---------- Small helpers ----------
 function el(tag, cls, text) {
@@ -41,6 +65,8 @@ function note(text, warn) {
 function pressed(sel, test) {
   for (const b of document.querySelectorAll(sel)) b.setAttribute("aria-pressed", String(test(b)));
 }
+// Auto: cards in a tall window (a portrait zone), a grid in a wide one.
+const shown = () => (look !== "auto" ? look : innerWidth < innerHeight * 1.05 || innerWidth < 720 ? "cards" : "grid");
 
 // A question gets Google's summary (Google writes one mostly for questions); a few words get plain results.
 function pickView(words) {
@@ -51,11 +77,10 @@ function pickView(words) {
 
 // Age in minutes from Google's words ("3 hours ago", "Mar 31, 2026") or the page's own date.
 function ageOf(text, iso) {
-  const now = Date.now();
   const m = /(\d+)\s*(minute|hour|day|week|month|year)s?\s+ago/i.exec(text || "");
   if (m) return +m[1] * { minute: 1, hour: 60, day: 1440, week: 10080, month: 43200, year: 525600 }[m[2].toLowerCase()];
   const t = Date.parse(text || "") || Date.parse(iso || "");
-  return t ? Math.max(0, Math.round((now - t) / 60000)) : null;
+  return t ? Math.max(0, Math.round((Date.now() - t) / 60000)) : null;
 }
 function ageText(min) {
   if (min == null) return "";
@@ -65,7 +90,9 @@ function ageText(min) {
   if (min < 525600) return `${Math.round(min / 43200)} mo`;
   return `${Math.round(min / 525600)} y`;
 }
-const junkColour = s => (s < 25 ? "var(--accent)" : s < 55 ? "var(--warn)" : "var(--bad)");
+// Fresh is bright: today, this week, this month, older.
+const freshness = min => (min == null ? "" : min <= 1440 ? "today" : min <= 10080 ? "week" : min <= 43200 ? "month" : "old");
+const junkClass = s => (s < 25 ? "clean" : s < 55 ? "some" : "heavy");
 const junkWord = s => (s < 25 ? "Clean" : s < 55 ? "Some junk" : "Heavy");
 const keyOf = href => {
   try {
@@ -75,6 +102,23 @@ const keyOf = href => {
     return href;
   }
 };
+function kindPill(r) {
+  const k = el("span", "kind", r.kind);
+  k.dataset.k = r.kind;
+  k.title = r.kindBy === "JEV" ? "Kind guessed by JEV from the title and snippet" : "Kind as the page itself says";
+  return k;
+}
+// The site's own little icon: Google's copy if it sent one, else the site's (only with Look inside).
+function favicon(r) {
+  const src = r.icon || (kept.inside && r.host?.includes(".") ? `https://${r.host}/favicon.ico` : "");
+  if (!src) return el("span", "fav none", (r.site || r.host || "?")[0].toUpperCase());
+  const img = new Image(16, 16);
+  img.className = "fav";
+  img.referrerPolicy = "no-referrer";
+  img.onerror = () => img.replaceWith(el("span", "fav none", (r.site || r.host || "?")[0].toUpperCase()));
+  img.src = src;
+  return img;
+}
 
 // ---------- Searching ----------
 function opts() {
@@ -105,21 +149,25 @@ async function search() {
       showCheck(page.tabId);
       return;
     }
+    if (page.unreadable) {
+      state = null;
+      $("stats").hidden = $("filters").hidden = true;
+      out.replaceChildren(
+        el("p", "note warn", "Search couldn't read Google's answer this time: Google sent a page laid out in a way it doesn't know yet."),
+        el("p", "note", "A copy is kept on this computer so it can be fixed. Meanwhile, see Google's own page in Reader:")
+      );
+      const b = el("button", "action", "Open this search in Reader");
+      b.onclick = () => ask({ type: "open", url: page.url });
+      out.append(b);
+      return;
+    }
     state = {
       words,
       view: o.view,
       summary: o.view === "summary" ? page.summary : null,
       ads: page.ads,
       duck: "no",
-      rows: page.results.map((r, i) => ({
-        ...r,
-        key: keyOf(r.href),
-        g: i + 1,
-        d: null,
-        age: ageOf(r.date),
-        kind: "",
-        inside: null,
-      })),
+      rows: page.results.map((r, i) => ({ ...r, key: keyOf(r.href), g: i + 1, d: null, age: ageOf(r.date), kind: "", inside: null })),
     };
     filters = new Set([...filters].filter(f => !f.startsWith("kind:")));
     draw();
@@ -130,7 +178,8 @@ async function search() {
   }
 }
 
-// Kinds from the address, then (with Look inside) everything from the page itself, row by row as it arrives.
+// Kinds from the address; then (with Look inside) everything from the page itself, row by row as it arrives;
+// then JEV, once, for opinion or reporting, selling, and kinds the pages didn't give.
 async function fill() {
   const s = state;
   await Promise.all(
@@ -146,8 +195,7 @@ async function fill() {
       if (s === state) draw();
     })
   );
-  // JEV, one call for the whole search (never in Private: it would learn the search): opinion or reporting,
-  // selling or not, and the kind where the page didn't say.
+  // JEV never runs in Private: it would learn the search.
   if (!$("private").checked && s.rows.length) {
     s.judging = true;
     if (s === state) draw();
@@ -155,13 +203,8 @@ async function fill() {
       const got = await ask({
         type: "judge",
         rows: s.rows.map((r, i) => ({
-          id: i,
-          title: r.title,
-          site: r.site,
-          snippet: r.snippet,
-          description: r.inside?.description || "",
-          kind: r.kind,
-          needKind: !r.kind,
+          id: i, title: r.title, site: r.site, snippet: r.snippet,
+          description: r.inside?.description || "", kind: r.kind, needKind: !r.kind,
         })),
       });
       for (const [i, j] of Object.entries(got?.rows || {})) {
@@ -252,6 +295,62 @@ function visible() {
   });
 }
 
+function toggle(id) {
+  filters.has(id) ? filters.delete(id) : filters.add(id);
+  if (id === "age:d") filters.delete("age:w");
+  if (id === "age:w") filters.delete("age:d");
+  draw();
+}
+
+// The stats bar: what these results are made of, at a glance. Each kind's share is a coloured block; click to filter.
+function drawStats() {
+  const box = $("stats");
+  if (!state || !state.rows.length) {
+    box.hidden = true;
+    return;
+  }
+  box.hidden = false;
+  box.replaceChildren();
+  const rows = state.rows.filter(r => !kept.never.includes(r.host));
+  const count = {};
+  for (const r of rows) count[r.kind || "Other"] = (count[r.kind || "Other"] || 0) + 1;
+  const bar = el("div", "mix");
+  for (const k of Object.keys(count).sort((a, b) => count[b] - count[a])) {
+    const seg = el("button", "seg-k");
+    seg.type = "button";
+    seg.dataset.k = k;
+    seg.style.flexGrow = count[k];
+    seg.title = `${count[k]} ${k} — click to show only these`;
+    seg.setAttribute("aria-pressed", String(filters.has("kind:" + k)));
+    seg.append(el("span", null, `${k} ${count[k]}`));
+    seg.onclick = () => toggle("kind:" + k);
+    bar.append(seg);
+  }
+  const facts = el("div", "facts");
+  const fact = (n, label, cls, title) => {
+    const f = el("span", "fact " + (cls ? "f-" + cls : ""));
+    f.append(el("b", null, String(n)), " " + label);
+    if (title) f.title = title;
+    facts.append(f);
+  };
+  fact(rows.length, rows.length === 1 ? "result" : "results");
+  const fresh = rows.filter(r => r.age != null && r.age <= 10080).length;
+  if (fresh) fact(fresh, "this week", "today");
+  const judged = rows.filter(r => r.opinion != null);
+  if (judged.length) {
+    fact(judged.filter(r => r.opinion >= 0.5).length, "opinion", "opinion", "JEV: mainly someone's view");
+    fact(judged.filter(r => r.selling >= 0.5).length, "selling", "selling", "JEV: trying to sell something");
+  } else if (state.judging) {
+    facts.append(el("span", "fact pending", "JEV is reading…"));
+  }
+  const pay = rows.filter(r => r.inside?.paywall).length;
+  if (pay) fact(pay, "paywalled", "pay");
+  const trackers = rows.reduce((a, r) => a + (r.inside?.junk?.trackers.length || 0), 0);
+  if (trackers) fact(trackers, "trackers avoided", "heavy", "Ad and tracker companies on these pages that you'd have met");
+  if (state.ads) fact(state.ads, state.ads === 1 ? "ad removed" : "ads removed");
+  box.append(bar, facts);
+}
+
 function drawFilters() {
   const box = $("filters");
   if (!state) {
@@ -260,25 +359,18 @@ function drawFilters() {
   }
   box.hidden = false;
   box.replaceChildren();
-  const count = {};
-  for (const r of state.rows) count[r.kind || "Other"] = (count[r.kind || "Other"] || 0) + 1;
-  const chip = (id, label, n) => {
-    const b = el("button", "chip");
+  const chip = (id, label) => {
+    const b = el("button", "chip", label);
     b.type = "button";
-    b.append(label);
-    if (n != null) b.append(el("span", "n", String(n)));
     b.setAttribute("aria-pressed", String(filters.has(id)));
-    b.onclick = () => {
-      filters.has(id) ? filters.delete(id) : filters.add(id);
-      if (id === "age:d") filters.delete("age:w");
-      if (id === "age:w") filters.delete("age:d");
-      draw();
-    };
+    b.onclick = () => toggle(id);
     box.append(b);
   };
-  for (const k of Object.keys(count).sort((a, b) => count[b] - count[a])) chip("kind:" + k, k, count[k]);
-  chip("age:d", "Last day");
-  chip("age:w", "Last week");
+  // Google already limited the time when When is set; these narrow what's here.
+  if (!$("when").value) {
+    chip("age:d", "Last day");
+    chip("age:w", "Last week");
+  }
   if (kept.inside) {
     chip("free", "Free to read");
     chip("clean", "Clean only");
@@ -289,7 +381,7 @@ function drawFilters() {
   }
   if (state.duck === "done") chip("both", "Both engines");
   if (filters.size) {
-    const c = el("button", "chip clear", "Clear");
+    const c = el("button", "chip clear", "Clear filters");
     c.type = "button";
     c.onclick = () => {
       filters.clear();
@@ -311,7 +403,7 @@ function drawViews() {
     b.onclick = () => {
       sort = { ...v.sort };
       filters = new Set(v.filters);
-      look = v.look;
+      look = v.look === "wall" ? "cards" : v.look;
       if (state) draw();
     };
     b.oncontextmenu = e => {
@@ -340,6 +432,7 @@ function drawViews() {
 function draw() {
   if (!state) return;
   pressed(".seg [data-look]", b => b.dataset.look === look);
+  drawStats();
   drawFilters();
   drawViews();
   out.replaceChildren();
@@ -355,12 +448,13 @@ function drawRows(holder = out.querySelector(".rows")) {
   if (!holder) return;
   const rows = visible();
   holder.replaceChildren(
-    !rows.length ? el("p", "note", "Nothing matches. Clear a filter, or try fewer words.") : look === "wall" ? wall(rows) : grid(rows)
+    !rows.length ? el("p", "note", "Nothing matches. Clear a filter, or try fewer words.") : shown() === "cards" ? cards(rows) : grid(rows)
   );
 }
 
-function thumb(r, big) {
+function thumb(r) {
   const t = el("div", "thumb");
+  t.dataset.k = r.kind || "Other";
   const pic = r.inside?.picture;
   if (r.inside === "loading") {
     t.classList.add("loading");
@@ -374,7 +468,6 @@ function thumb(r, big) {
   } else {
     t.textContent = (r.site || r.host || "?")[0].toUpperCase();
   }
-  if (big) t.classList.add("big");
   return t;
 }
 
@@ -400,7 +493,7 @@ function grid(rows) {
     header("Kind", "kind", "c-kind"),
     header("Age", "age", "num"),
     header("Read", "read", "num c-read"),
-    header("Junk", "junk", "num"),
+    header("Junk", "junk", "c-junk"),
     header("Tone", "tone", "c-tone"),
     header("Selling", "selling", "c-sell"),
     header("Found", "rank", "c-found"),
@@ -412,122 +505,121 @@ function grid(rows) {
   return t;
 }
 
-function row(r) {
-  const tr = el("tr", "row");
-  if (kept.prefer.includes(r.host)) tr.classList.add("preferred");
-  tr.onclick = () => ask({ type: "open", url: r.href });
+function siteLine(r) {
   const inside = r.inside && r.inside !== "loading" ? r.inside : null;
-
-  const pic = el("td", "pic");
-  pic.append(thumb(r));
-
-  const what = el("td", "what");
-  const site = el("div", "site", r.site || r.host || "");
+  const site = el("div", "site");
+  site.append(favicon(r), el("span", "name", r.site || r.host || ""));
   if (inside?.paywall) site.append(el("span", "lock", "🔒 paywall"));
-  if (inside?.author && inside.author.toLowerCase() !== (r.site || "").toLowerCase()) site.append(el("span", null, "· " + inside.author));
-  what.append(site, el("div", "title", r.title), el("div", "snippet", r.snippet || ""));
+  if (inside?.author && inside.author.toLowerCase() !== (r.site || "").toLowerCase()) site.append(el("span", "author", inside.author));
+  return site;
+}
 
-  const kind = el("td", "c-kind");
-  if (r.kind) {
-    const k = el("span", "kind", r.kind);
-    k.dataset.k = r.kind;
-    k.title = r.kindBy === "JEV" ? "Kind guessed by JEV from the title and snippet" : "Kind as the page itself says";
-    kind.append(k);
-  }
+function agePill(r) {
+  return r.age == null ? "" : el("span", "age " + freshness(r.age), ageText(r.age));
+}
 
-  const age = el("td", "num", ageText(r.age));
-  const read = el("td", "num c-read", inside?.readMin ? `${inside.readMin} min` : "");
-
-  const junk = el("td", "num");
+function junkCell(inside) {
+  const w = el("span", "junk");
   if (inside?.junk) {
     const j = inside.junk;
-    const w = el("span", "junk");
+    w.classList.add(junkClass(j.score));
     w.title = `${junkWord(j.score)}: ${j.kb} KB of page code, ${j.scripts} scripts from ${j.hosts} other sites` +
       (j.trackers.length ? `\nAd and tracker companies: ${j.trackers.join(", ")}` : "\nNo known ad or tracker companies");
     const m = el("span", "meter");
     const bar = el("i");
-    bar.style.width = Math.max(6, j.score) + "%";
-    bar.style.background = junkColour(j.score);
+    bar.style.width = Math.max(8, j.score) + "%";
     m.append(bar);
-    w.append(m, String(j.trackers.length));
-    junk.append(w);
+    w.append(m, el("span", "n", j.trackers.length ? String(j.trackers.length) : "0"));
   } else if (inside?.failed) {
-    junk.textContent = "—";
-    junk.title = "Couldn't look inside: " + inside.failed;
+    w.textContent = "—";
+    w.title = "Couldn't look inside: " + inside.failed;
   }
+  return w;
+}
 
-  // JEV's judgements, with how sure it is.
-  const tone = el("td", "c-tone");
-  if (r.opinion != null) {
-    const t = el("span", "tone " + (r.opinion >= 0.5 ? "opinion" : "report"), r.opinion >= 0.5 ? "Opinion" : "Reporting");
-    t.title = `JEV: ${Math.round(r.opinion * 100)}% likely to be opinion`;
-    tone.append(t);
-  } else if (state.judging) {
-    tone.append(el("span", "pending", "…"));
-  }
-  const sell = el("td", "c-sell");
-  if (r.selling != null) {
-    if (r.selling >= 0.5) {
-      const t = el("span", "selling", "$ Selling");
-      t.title = `JEV: ${Math.round(r.selling * 100)}% likely to be selling something`;
-      sell.append(t);
-    } else {
-      const t = el("span", "pending", "—");
-      t.title = `JEV: ${Math.round(r.selling * 100)}% likely to be selling something`;
-      sell.append(t);
-    }
-  } else if (state.judging) {
-    sell.append(el("span", "pending", "…"));
-  }
+function tonePill(r) {
+  if (r.opinion == null) return state.judging ? el("span", "pending", "…") : "";
+  const t = el("span", "tone " + (r.opinion >= 0.5 ? "opinion" : "report"), r.opinion >= 0.5 ? "Opinion" : "Reporting");
+  t.title = `JEV: ${Math.round(r.opinion * 100)}% likely to be opinion`;
+  return t;
+}
+function sellPill(r) {
+  if (r.selling == null) return state.judging ? el("span", "pending", "…") : "";
+  const t = r.selling >= 0.5 ? el("span", "selling", "$ Selling") : el("span", "pending", "—");
+  t.title = `JEV: ${Math.round(r.selling * 100)}% likely to be selling something`;
+  return t;
+}
 
-  const found = el("td", "c-found");
-  const f = el("span", "found");
-  if (r.g) f.append(el("span", "g", "G" + r.g));
-  if (r.d) f.append(el("span", "d", "D" + r.d));
-  found.append(f);
+function actions(r) {
+  const acts = el("span", "acts");
+  if (!(r.host && r.host.includes("."))) return acts;
+  const p = el("button", "prefer", "★");
+  p.title = kept.prefer.includes(r.host) ? "Stop preferring " + r.host : "Prefer " + r.host + ": show it first from now on";
+  p.onclick = e => {
+    e.stopPropagation();
+    kept.prefer = kept.prefer.includes(r.host) ? kept.prefer.filter(h => h !== r.host) : [...kept.prefer, r.host];
+    save();
+    draw();
+  };
+  const n = el("button", "never", "⦸");
+  n.title = "Never show " + r.host + " again";
+  n.onclick = e => {
+    e.stopPropagation();
+    kept.never.push(r.host);
+    save();
+    draw();
+  };
+  acts.append(p, n);
+  return acts;
+}
 
-  const acts = el("td", "acts");
-  if (r.host && r.host.includes(".")) {
-    const p = el("button", "prefer", "★");
-    p.title = kept.prefer.includes(r.host) ? "Stop preferring " + r.host : "Prefer " + r.host + ": show it first from now on";
-    p.onclick = e => {
-      e.stopPropagation();
-      kept.prefer = kept.prefer.includes(r.host) ? kept.prefer.filter(h => h !== r.host) : [...kept.prefer, r.host];
-      save();
-      draw();
-    };
-    const n = el("button", "never", "⦸");
-    n.title = "Never show " + r.host + " again";
-    n.onclick = e => {
-      e.stopPropagation();
-      kept.never.push(r.host);
-      save();
-      draw();
-    };
-    acts.append(p, " ", n);
-  }
-  tr.append(pic, what, kind, age, read, junk, tone, sell, found, acts);
+function row(r) {
+  const tr = el("tr", "row");
+  tr.dataset.k = r.kind || "Other";
+  if (kept.prefer.includes(r.host)) tr.classList.add("preferred");
+  tr.onclick = () => ask({ type: "open", url: r.href });
+  const inside = r.inside && r.inside !== "loading" ? r.inside : null;
+  const td = (cls, ...kids) => {
+    const c = el("td", cls);
+    c.append(...kids.filter(k => k !== ""));
+    return c;
+  };
+  const what = td("what", siteLine(r), el("div", "title", r.title), el("div", "snippet", r.snippet || ""));
+  const found = el("span", "found");
+  if (r.g) found.append(el("span", "g", "G" + r.g));
+  if (r.d) found.append(el("span", "d", "D" + r.d));
+  tr.append(
+    td("pic", thumb(r)),
+    what,
+    td("c-kind", r.kind ? kindPill(r) : ""),
+    td("num", agePill(r)),
+    td("num c-read", inside?.readMin ? `${inside.readMin} min` : ""),
+    td("c-junk", junkCell(inside)),
+    td("c-tone", tonePill(r)),
+    td("c-sell", sellPill(r)),
+    td("c-found", found),
+    td("c-acts", actions(r))
+  );
   return tr;
 }
 
-function wall(rows) {
-  const w = el("div", "wall");
+function cards(rows) {
+  const w = el("div", "cards");
   for (const r of rows) {
-    const t = el("div", "tile");
-    t.onclick = () => ask({ type: "open", url: r.href });
+    const inside = r.inside && r.inside !== "loading" ? r.inside : null;
+    const c = el("article", "card");
+    c.dataset.k = r.kind || "Other";
+    c.onclick = () => ask({ type: "open", url: r.href });
     const body = el("div", "body");
     const meta = el("div", "meta");
-    meta.append(r.site || "", r.age != null ? " · " + ageText(r.age) : "");
-    if (r.kind) {
-      const k = el("span", "kind", r.kind);
-      k.dataset.k = r.kind;
-      meta.append(k);
+    for (const x of [r.kind ? kindPill(r) : "", agePill(r), inside?.readMin ? el("span", "read", `${inside.readMin} min`) : "", junkCell(inside)]) {
+      if (x !== "") meta.append(x);
     }
-    if (r.opinion >= 0.5) meta.append(el("span", "tone opinion", "Opinion"));
-    if (r.selling >= 0.5) meta.append(el("span", "selling", "$"));
-    body.append(el("div", "title", r.title), meta);
-    t.append(thumb(r, true), body);
-    w.append(t);
+    if (r.opinion >= 0.5) meta.append(tonePill(r));
+    if (r.selling >= 0.5) meta.append(sellPill(r));
+    body.append(siteLine(r), el("div", "title", r.title), el("div", "snippet", r.snippet || ""), meta);
+    c.append(thumb(r), body, actions(r));
+    w.append(c);
   }
   return w;
 }
@@ -537,7 +629,7 @@ function summaryBlock(s) {
   box.append(el("h2", null, "Google's summary · may be wrong"));
   for (const t of s.paragraphs) {
     const kind = t.startsWith("• ") ? "bullet" : t.length < 60 && !/[.:!?]$/.test(t) ? "head" : null;
-    box.append(el("p", kind, t));
+    box.append(el("p", kind, kind === "bullet" ? t.slice(2) : t));
   }
   if (s.paragraphs.length > 3) {
     const more = el("button", "more", "Show all");
@@ -561,17 +653,10 @@ function summaryBlock(s) {
 
 function foot() {
   const f = el("div", "foot");
-  const left = el("span");
-  const shown = visible().length;
-  const parts = [`${shown} of ${state.rows.length} results`];
-  if (state.ads) parts.push(`${state.ads} ${state.ads === 1 ? "ad" : "ads"} removed`);
-  const junk = state.rows.map(r => r.inside?.junk?.trackers.length || 0).reduce((a, b) => a + b, 0);
-  if (junk) parts.push(`${junk} trackers you'd have met`);
-  left.textContent = parts.join(" · ");
-  f.append(left);
+  f.append(el("span", null, `${visible().length} of ${state.rows.length} shown`));
   if (state.duck === "no" || state.duck === "failed") {
     const b = el("button", "action", state.duck === "failed" ? "DuckDuckGo didn't answer: try again" : "＋ Also ask DuckDuckGo");
-    b.title = "One more search, at DuckDuckGo; its results join the grid, marked D";
+    b.title = "One more search, at DuckDuckGo; its results join these, marked D";
     b.onclick = askDuck;
     f.append(b);
   } else if (state.duck === "asking") {
@@ -595,9 +680,19 @@ for (const b of document.querySelectorAll(".seg [data-view]")) {
 for (const b of document.querySelectorAll(".seg [data-look]")) {
   b.onclick = () => {
     look = b.dataset.look;
+    save();
+    pressed(".seg [data-look]", x => x.dataset.look === look);
     draw();
   };
 }
+// Auto follows the window: resized from tall to wide, the cards become a grid.
+let lastShown = shown();
+addEventListener("resize", () => {
+  if (shown() !== lastShown) {
+    lastShown = shown();
+    draw();
+  }
+});
 $("when").onchange = () => $("words").value.trim() && search();
 $("exact").onchange = () => $("words").value.trim() && search();
 $("inside").onchange = () => {
@@ -612,13 +707,15 @@ $("private").onchange = async () => {
   document.body.classList.toggle("is-private", $("private").checked);
   if (!$("private").checked) await ask({ type: "endPrivate" });
   state = null;
-  $("filters").hidden = true;
+  $("filters").hidden = $("stats").hidden = true;
   note($("private").checked ? "Private: signed out, nothing remembered." : "Signed in again.");
 };
 pressed(".seg [data-look]", b => b.dataset.look === look);
 
 // Opened with ?q= (landmax-search <words>): run that one search.
 const asked = params.get("q");
+if (params.get("when")) $("when").value = params.get("when");
+if (params.get("look")) look = params.get("look");
 if (asked) {
   $("words").value = asked;
   search();

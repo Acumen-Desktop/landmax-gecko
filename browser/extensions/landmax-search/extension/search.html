@@ -34,10 +34,12 @@
       <label class="check" title="Google won't change your words"><input type="checkbox" id="exact"> Exact words</label>
       <label class="check" title="Look inside each result for its picture, read time and junk. Each site sees one visit from this computer, with no cookies."><input type="checkbox" id="inside" checked> Look inside</label>
       <div class="seg right" role="group" aria-label="Layout">
-        <button type="button" data-look="grid" title="Grid">☰</button>
-        <button type="button" data-look="wall" title="Pictures">▦</button>
+        <button type="button" data-look="auto" title="Cards when the window is tall, a grid when it is wide">Auto</button>
+        <button type="button" data-look="grid" title="A grid you sort and filter like a spreadsheet">Grid</button>
+        <button type="button" data-look="cards" title="Picture cards">Cards</button>
       </div>
     </div>
+    <div id="stats" class="stats" hidden></div>
     <div id="filters" class="filters" hidden></div>
     <div id="views" class="views" hidden></div>
   </header>
