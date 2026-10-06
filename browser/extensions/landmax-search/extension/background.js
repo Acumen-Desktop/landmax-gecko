@@ -14,13 +14,13 @@ browser.webRequest.onBeforeRequest.addListener(
   { urls: ["https://search.landmax.invalid/*"], types: ["main_frame"] },
   ["blocking"]
 );
-// At start the window may load that address before this add-on is running: turn such a tab into the panel too.
-browser.tabs.query({}).then(tabs => {
-  for (const t of tabs) {
-    if (/^https:\/\/search\.landmax\.invalid\//.test(t.url || "")) {
-      browser.tabs.update(t.id, { url: PANEL + new URL(t.url).search });
-    }
-  }
+// At start the window may load that address before this add-on is running, and show "Problem loading page": turn
+// such a tab into the panel too, whether it's already there or still loading when the add-on starts.
+const ENTRY = /^https:\/\/search\.landmax\.invalid\//;
+const toPanel = t => ENTRY.test(t.url || "") && browser.tabs.update(t.id, { url: PANEL + new URL(t.url).search });
+browser.tabs.query({}).then(tabs => tabs.forEach(toPanel));
+browser.tabs.onUpdated.addListener((id, info, tab) => (info.url || info.status === "complete") && toPanel(tab), {
+  properties: ["url", "status"],
 });
 
 // One hidden tab per cookie store does the Google searches: "firefox-default" (signed in) or the Private container.
