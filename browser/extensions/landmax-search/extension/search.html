@@ -8,18 +8,28 @@
 </head>
 <body class="home">
   <header id="top">
-    <h1 class="mark">Search</h1>
+    <button type="button" id="home" class="mark" title="Back to the start: your recent searches">Search</button>
     <div class="line">
+      <div class="nav">
+        <button type="button" id="back" class="arrow" title="The search before this one" aria-label="Back">‹</button>
+        <button type="button" id="fwd" class="arrow" title="The search after this one" aria-label="Forward">›</button>
+      </div>
       <form id="form" class="box" autocomplete="off" role="search">
-        <svg class="glass" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg>
-        <input id="words" type="search" placeholder="Search Google" aria-label="Search" autofocus>
-        <label class="priv" title="Private: signed out of Google, in a throwaway container, nothing remembered">
+        <button type="button" id="engine" class="engine" aria-haspopup="true" aria-expanded="false" title="Which search engine to ask"></button>
+        <input id="words" type="search" placeholder="Search" aria-label="Search" autofocus>
+        <label class="priv" title="Private: signed out of Google, in a throwaway container; this search isn't kept in your history">
           <input type="checkbox" id="private"> Private
         </label>
       </form>
       <button type="button" id="refine" class="quiet" aria-expanded="false" aria-controls="pop">Refine</button>
+      <div id="looks" class="looks" role="group" aria-label="Show results as">
+        <button type="button" data-look="grid">Grid</button>
+        <button type="button" data-look="cards">Cards</button>
+      </div>
     </div>
+    <div id="engines" class="engines" role="radiogroup" aria-label="Search with"></div>
     <div id="active" class="active" hidden></div>
+    <div id="enginemenu" class="menu" hidden></div>
 
     <div id="pop" class="pop" hidden>
       <section>
@@ -56,11 +66,13 @@
       <section>
         <h3>Results</h3>
         <label class="row"><input type="checkbox" id="inside" checked> Look inside each page
-          <small>for its picture, read time and junk; each site sees one visit, with no cookies</small></label>
+          <small>for its picture, read time and junk: the first 300 KB of each result, no scripts, no cookies. Off is lighter for old computers</small></label>
         <div id="sites"></div>
       </section>
     </div>
   </header>
+
+  <section id="recent" class="recent" aria-label="Your recent searches"></section>
 
   <main id="main" hidden>
     <nav id="list" class="list" aria-label="Results"></nav>
