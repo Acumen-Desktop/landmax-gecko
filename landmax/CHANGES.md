@@ -32,3 +32,11 @@ hidden later); the Mozilla account's fox avatar (Mozilla's own service); DevTool
 | File | Change | Why |
 | --- | --- | --- |
 | `browser/extensions/moz.build` | Adds `landmax-search` to `DIRS` | Builds our Search add-on in (ours: `browser/extensions/landmax-search/`) |
+
+## Site apps (2026-10-07, `site-apps-plan.md` in landmax-library)
+
+| File | Change | Why |
+| --- | --- | --- |
+| `browser/components/shell/ShellService.sys.mjs` | `_findStartupCommand` returns `$LANDMAX_READER_LAUNCHER` when set | The `.desktop` files written for site apps must run our launcher (it sets the identity file), not the bare engine |
+
+The switch itself is a branding pref (`browser.taskbarTabs.enabled`), not a change to Mozilla's files.
