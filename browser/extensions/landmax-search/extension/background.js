@@ -52,6 +52,16 @@ async function workerTab(store) {
   return tab.id;
 }
 
+const showing = new Set(); // a worker tab showing Google's check to the person loads everything
+
+// Old computers first: Google's page in the hidden tab is only read, never seen, so its pictures, fonts and videos
+// are never downloaded (the result icons Google sends are inside the page already).
+browser.webRequest.onBeforeRequest.addListener(
+  d => ([...workers.values()].includes(d.tabId) && !showing.has(d.tabId) ? { cancel: true } : {}),
+  { urls: ["<all_urls>"], types: ["image", "imageset", "media", "font"] },
+  ["blocking"]
+);
+
 // Resolves when the tab has finished loading a real page (not the about:blank it starts on).
 function loaded(tabId, ms = 20000) {
   return new Promise((resolve, reject) => {
@@ -135,32 +145,46 @@ async function google(words, opts) {
   return { ...page, sent: googleQuery(words, opts) };
 }
 
-// DuckDuckGo's plain HTML page needs no scripts, so it's fetched directly; nothing is remembered (no cookies).
+// DuckDuckGo and Brave answer a plain request (no browser tab, no scripts, no cookies): 50 to 350 KB each,
+// read as text. (Bing isn't offered: without cookies it answers a shortened question, and DuckDuckGo's results
+// come largely from Bing's index anyway.) Each returns results shaped like Google's: {title, href, site, host, snippet, date}.
+const hostOf = u => new URL(u).hostname.replace(/^www\./, "");
+const text = el => (el?.textContent || "").replace(/\s+/g, " ").trim();
+async function page(url) {
+  const r = await fetch(url, { credentials: "omit", headers: { Accept: "text/html" } });
+  if (!r.ok) throw new Error(`answered ${r.status}`);
+  return new DOMParser().parseFromString(await r.text(), "text/html");
+}
+// "Mar 11, 2026 · words…" or "August 4, 2026 - words…": the date on its own.
+function splitDate(snippet) {
+  const m = snippet.match(/^((?:[A-Z][a-z]+\.? \d{1,2}, \d{4})|(?:\d+ (?:minutes?|hours?|days?|weeks?|months?) ago))\s*[·—-]\s*/);
+  return m ? [m[1], snippet.slice(m[0].length)] : ["", snippet];
+}
+
 async function duck(words) {
-  const r = await fetch("https://html.duckduckgo.com/html/?q=" + encodeURIComponent(words), {
-    credentials: "omit",
-  });
-  const doc = new DOMParser().parseFromString(await r.text(), "text/html");
+  const doc = await page("https://html.duckduckgo.com/html/?q=" + encodeURIComponent(words));
   const results = [];
-  for (const el of doc.querySelectorAll(".result")) {
-    if (el.classList.contains("result--ad")) {
-      continue;
-    }
+  for (const el of doc.querySelectorAll(".result:not(.result--ad)")) {
     const a = el.querySelector("a.result__a");
     let href = a?.getAttribute("href") || "";
     const m = href.match(/[?&]uddg=([^&]+)/);
-    if (m) {
-      href = decodeURIComponent(m[1]);
-    }
-    if (!a || !/^https?:/.test(href)) {
-      continue;
-    }
-    results.push({
-      title: a.textContent.trim(),
-      url: href,
-      site: new URL(href).hostname.replace(/^www\./, ""),
-      snippet: el.querySelector(".result__snippet")?.textContent.trim() || "",
-    });
+    if (m) href = decodeURIComponent(m[1]);
+    if (!/^https?:/.test(href)) continue;
+    results.push({ title: text(a), href, site: hostOf(href), host: hostOf(href), snippet: text(el.querySelector(".result__snippet")), date: "" });
+  }
+  return { results: results.slice(0, 10) };
+}
+
+async function brave(words) {
+  const doc = await page("https://search.brave.com/search?q=" + encodeURIComponent(words) + "&source=web");
+  const results = [];
+  for (const el of doc.querySelectorAll('.snippet[data-type="web"]')) {
+    const a = el.querySelector("a[href^='http']");
+    if (!a) continue;
+    const href = a.getAttribute("href");
+    const [date, snippet] = splitDate(text(el.querySelector(".generic-snippet .content") || el.querySelector(".snippet-description")));
+    const title = el.querySelector(".title")?.getAttribute("title") || text(el.querySelector(".title"));
+    results.push({ title, href, site: text(el.querySelector(".site-name-content .t-secondary")) || hostOf(href), host: hostOf(href), snippet, date });
   }
   return { results: results.slice(0, 10) };
 }
@@ -210,6 +234,28 @@ function ldObjects(doc) {
   return out;
 }
 
+// The start of a page is enough (its labels are in the head, most of its scripts near the top): stop downloading
+// there, so a 2 MB page costs 300 KB.
+async function firstPart(r, max) {
+  const reader = r.body.getReader();
+  const parts = [];
+  let size = 0;
+  while (size < max) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    parts.push(value);
+    size += value.length;
+  }
+  reader.cancel().catch(() => {});
+  const all = new Uint8Array(size);
+  let at = 0;
+  for (const p of parts) {
+    all.set(p, at);
+    at += p.length;
+  }
+  return new TextDecoder().decode(all);
+}
+
 async function enrich(url) {
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), 10000);
@@ -229,7 +275,7 @@ async function enrich(url) {
     if (!/html/.test(type)) {
       return { kind: /pdf/.test(type) ? "PDF" : kindOfHost(host), kb: Math.round((+r.headers.get("content-length") || 0) / 1024) || null };
     }
-    const html = (await r.text()).slice(0, 4000000);
+    const html = await firstPart(r, 300 * 1024);
     const doc = new DOMParser().parseFromString(html, "text/html");
     // A tiny page with no title is a site turning the look away (Forbes does), not the page.
     if (html.length < 3000 && !doc.title) {
@@ -340,6 +386,7 @@ function open(url) {
 
 // Google asked "are you a robot?": show its own page in the panel's window so the person can answer it.
 async function showCheck(tabId) {
+  showing.add(tabId);
   await browser.tabs.show(tabId).catch(() => {});
   await browser.tabs.update(tabId, { active: true });
   // When the check is passed Google goes on to the results: back to the panel, which searches again.
@@ -354,6 +401,7 @@ async function showCheck(tabId) {
 }
 
 async function backToPanel(tabId) {
+  showing.delete(tabId);
   const [panel] = await browser.tabs.query({ url: PANEL });
   if (panel) {
     await browser.tabs.update(panel.id, { active: true });
@@ -374,6 +422,8 @@ function handle(msg) {
       return google(msg.words, msg.opts || {});
     case "duck":
       return duck(msg.words);
+    case "brave":
+      return brave(msg.words);
     case "enrich":
       return enrich(msg.url);
     case "judge":
