@@ -2,25 +2,34 @@
 // Landmax Search: runs searches for the panel (search.html). Rules (docs/search-plan.md):
 // - one search per click, never in the background, never in a batch;
 // - Google first, read from the page it sends to a hidden tab (Google needs a real browser since 2025);
-// - "Also ask DuckDuckGo" only when clicked;
+// - DuckDuckGo and Brave only when picked (or All);
 // - if Google asks "are you a robot?", the person answers it themselves: we show Google's own page.
 
 const PANEL = browser.runtime.getURL("search.html");
 
+// Every Reader window and site app carries this built-in add-on too; it wakes only in Search's own app (its
+// identity file, search.ini, names it landmax-search), so Reader pays nothing for it.
+const starts = [];
+const atStart = f => starts.push(f);
+
 // The launcher opens https://search.landmax.invalid/ (an address that can never resolve); it becomes the panel.
 // Its ?q= is kept: "landmax-search <words>" opens the panel with that search (one search, asked for by the person).
-browser.webRequest.onBeforeRequest.addListener(
-  d => ({ redirectUrl: PANEL + new URL(d.url).search }),
-  { urls: ["https://search.landmax.invalid/*"], types: ["main_frame"] },
-  ["blocking"]
+atStart(() =>
+  browser.webRequest.onBeforeRequest.addListener(
+    d => ({ redirectUrl: PANEL + new URL(d.url).search }),
+    { urls: ["https://search.landmax.invalid/*"], types: ["main_frame"] },
+    ["blocking"]
+  )
 );
 // At start the window may load that address before this add-on is running, and show "Problem loading page": turn
 // such a tab into the panel too, whether it's already there or still loading when the add-on starts.
 const ENTRY = /^https:\/\/search\.landmax\.invalid\//;
 const toPanel = t => ENTRY.test(t.url || "") && browser.tabs.update(t.id, { url: PANEL + new URL(t.url).search });
-browser.tabs.query({}).then(tabs => tabs.forEach(toPanel));
-browser.tabs.onUpdated.addListener((id, info, tab) => (info.url || info.status === "complete") && toPanel(tab), {
-  properties: ["url", "status"],
+atStart(() => {
+  browser.tabs.query({}).then(tabs => tabs.forEach(toPanel));
+  browser.tabs.onUpdated.addListener((id, info, tab) => (info.url || info.status === "complete") && toPanel(tab), {
+    properties: ["url", "status"],
+  });
 });
 
 // One hidden tab per cookie store does the Google searches: "firefox-default" (signed in) or the Private container.
@@ -56,10 +65,12 @@ const showing = new Set(); // a worker tab showing Google's check to the person 
 
 // Old computers first: Google's page in the hidden tab is only read, never seen, so its pictures, fonts and videos
 // are never downloaded (the result icons Google sends are inside the page already).
-browser.webRequest.onBeforeRequest.addListener(
-  d => ([...workers.values()].includes(d.tabId) && !showing.has(d.tabId) ? { cancel: true } : {}),
-  { urls: ["<all_urls>"], types: ["image", "imageset", "media", "font"] },
-  ["blocking"]
+atStart(() =>
+  browser.webRequest.onBeforeRequest.addListener(
+    d => ([...workers.values()].includes(d.tabId) && !showing.has(d.tabId) ? { cancel: true } : {}),
+    { urls: ["<all_urls>"], types: ["image", "imageset", "media", "font"] },
+    ["blocking"]
+  )
 );
 
 // Resolves when the tab has finished loading a real page (not the about:blank it starts on).
@@ -351,7 +362,14 @@ async function enrich(url) {
   }
 }
 
-// Private: a throwaway container, signed out; it's removed (cookies and all) when Private is switched off.
+// Private: a throwaway container, signed out; it's removed (cookies and all) when Private is switched off, and any
+// left over (Search was closed while Private was on) when Search starts.
+atStart(() =>
+  browser.contextualIdentities
+    .query({ name: "Private search" })
+    .then(old => old.forEach(c => browser.contextualIdentities.remove(c.cookieStoreId).catch(() => {})))
+    .catch(() => {})
+);
 let privateId = null;
 
 async function privateStore() {
@@ -409,12 +427,14 @@ async function backToPanel(tabId) {
   await browser.tabs.hide(tabId).catch(() => {});
 }
 
-browser.runtime.onMessage.addListener(msg => {
-  const answer = handle(msg);
-  // Every failure is written to the log as well as shown in the panel.
-  answer?.catch?.(e => console.error("Landmax Search:", msg.type, e));
-  return answer;
-});
+atStart(() =>
+  browser.runtime.onMessage.addListener(msg => {
+    const answer = handle(msg);
+    // Every failure is written to the log as well as shown in the panel.
+    answer?.catch?.(e => console.error("Landmax Search:", msg.type, e));
+    return answer;
+  })
+);
 
 function handle(msg) {
   switch (msg.type) {
@@ -445,3 +465,7 @@ function handle(msg) {
   }
   return undefined;
 }
+
+browser.runtime.getBrowserInfo().then(info => {
+  if (info.name === "landmax-search") starts.forEach(f => f());
+});

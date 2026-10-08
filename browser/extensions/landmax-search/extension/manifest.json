@@ -1,8 +1,8 @@
 {
   "manifest_version": 2,
   "name": "Landmax Search",
-  "version": "0.1.0",
-  "description": "Search done right: Google's answer and results as plain cards, no ads, one search per click.",
+  "version": "0.3.0",
+  "description": "Landmax Search: Google, DuckDuckGo and Brave without ads, with history and a word on whom to trust. Wakes only in the Search app.",
   "browser_specific_settings": { "gecko": { "id": "search@landmax.global" } },
   "background": { "scripts": ["background.js"] },
   "permissions": [
