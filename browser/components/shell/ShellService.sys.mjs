@@ -1196,6 +1196,12 @@ let ShellServiceInternal = {
    * browser.
    */
   async _findStartupCommand() {
+    // Landmax: our launcher starts the engine with our identity file, so desktop files must run the launcher.
+    let landmaxLauncher = Services.env.get("LANDMAX_READER_LAUNCHER");
+    if (landmaxLauncher) {
+      return landmaxLauncher;
+    }
+
     let executableFile = Services.dirsvc.get("XREExeF", Ci.nsIFile);
 
     let wanted = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);

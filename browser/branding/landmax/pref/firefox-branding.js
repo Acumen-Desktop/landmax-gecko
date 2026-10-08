@@ -80,3 +80,7 @@ pref("privacy.userContext.enabled", true);
 
 // No "Open previous tabs?" bar (SessionWindowUI: a count below 0 never shows it).
 pref("browser.startup.couldRestoreSession.count", -1);
+
+// Site apps (site-apps-plan.md): Mozilla's web apps ("Taskbar Tabs"), on outside Windows. Each site gets its own window,
+// its own icon in Applications and its own Wayland app id, global.landmax.reader.webapp-<id>.
+pref("browser.taskbarTabs.enabled", true);
