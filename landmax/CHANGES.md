@@ -40,3 +40,13 @@ hidden later); the Mozilla account's fox avatar (Mozilla's own service); DevTool
 | `browser/components/shell/ShellService.sys.mjs` | `_findStartupCommand` returns `$LANDMAX_READER_LAUNCHER` when set | The `.desktop` files written for site apps must run our launcher (it sets the identity file), not the bare engine |
 
 The switch itself is a branding pref (`browser.taskbarTabs.enabled`), not a change to Mozilla's files.
+
+## Logins (2026-10-08, `site-apps-plan.md` › Accounts in landmax-library)
+
+| File | Change | Why |
+| --- | --- | --- |
+| `browser/components/moz.build` | Adds `landmax` to `DIRS` | Our own front-end parts: `browser/components/landmax/` |
+| `browser/components/DesktopActorRegistry.sys.mjs` | Registers the `LandmaxLogins` actor on `accounts.google.com` and `workspace.google.com` | A login's sign-in page gets its email filled (never submitted); a signed-out Gmail app that lands on Google's advert page goes to sign-in instead |
+
+The identity file also gets `UAName=Firefox` (`make-application-ini.sh`): without it websites saw `landmax-reader/159.0a1`,
+and Google served its basic, light-only sign-in page.

@@ -1,0 +1,9 @@
+# Landmax Reader's own front-end parts (landmax-library: docs/site-apps-plan.md).
+
+with Files("**"):
+    BUG_COMPONENT = ("Firefox", "General")
+
+MOZ_SRC_FILES += [
+    "LandmaxLoginsChild.sys.mjs",
+    "LandmaxLoginsParent.sys.mjs",
+]

@@ -687,6 +687,23 @@ let JSWINDOWACTORS = {
     remoteTypes: ["parent", "privilegedabout"],
   },
 
+  // Landmax Reader: logins fill their email on the vendor's sign-in page, and skip its advert page (landmax/CHANGES.md).
+  LandmaxLogins: {
+    parent: {
+      esModuleURI: "moz-src:///browser/components/landmax/LandmaxLoginsParent.sys.mjs",
+    },
+    child: {
+      esModuleURI: "moz-src:///browser/components/landmax/LandmaxLoginsChild.sys.mjs",
+      events: {
+        DOMContentLoaded: {},
+      },
+    },
+    matches: ["https://accounts.google.com/*", "https://workspace.google.com/*"],
+    messageManagerGroups: ["browsers"],
+    // The parent hands out an email only to the vendor's own top-level sign-in page, in that login's container.
+    safeForUntrustedWebProcess: true,
+  },
+
   LinkHandler: {
     parent: {
       esModuleURI: "resource:///actors/LinkHandlerParent.sys.mjs",

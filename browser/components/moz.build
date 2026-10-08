@@ -23,6 +23,7 @@ with Files("controlcenter/**"):
 
 DIRS += [
     "about",
+    "landmax",  # Landmax Reader (landmax/CHANGES.md)
     "aboutlogins",
     "aboutwelcome",
     "aiwindow",
