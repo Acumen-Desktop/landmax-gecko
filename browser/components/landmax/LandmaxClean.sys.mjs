@@ -143,6 +143,11 @@ class Clean {
       return; // Reader's own requests (updates, lists) aren't a page's.
     }
     const top = bc.top;
+    // Apps only for now: Browser gets the allow-list with its own Clean panel (site-apps-plan.md, step 6), so a
+    // page broken by it always has a switch to fix it. uBlock Origin's block list runs everywhere.
+    if (!top.embedderElement.ownerGlobal?.document.documentElement.hasAttribute("taskbartab")) {
+      return;
+    }
     const kind = info.externalContentPolicyType;
     if (kind === Ci.nsIContentPolicy.TYPE_DOCUMENT) {
       // A new page in this tab: a new report.
