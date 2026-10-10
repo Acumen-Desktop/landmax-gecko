@@ -5,7 +5,8 @@
 // Clean, second stage (landmax-library: docs/site-apps-plan.md › Apps have three layers). uBlock Origin's block
 // list runs first; whatever outside company a page still asks for is then blocked unless something says it's needed:
 //   1. the person's switch for that company on that site (switches.json), or "let everything load" for the site;
-//   2. the site's own family of addresses (a vendor's own domains) and the infrastructure every site may need
+//   2. the site's own company (owners.json: who owns which domain, from DuckDuckGo's Tracker Radar and Disconnect,
+//      made by landmax/tools/make-owners.py; FAMILIES fills gaps) and the infrastructure every site may need
 //      (sign-in, payments, security checks);
 //   3. JEV's judgement (judged.json, asked through the landmax-reader-clean helper, one call per site): what the
 //      company is there for; content, fonts, video players, maps, sign-in, payments and security are allowed;
@@ -22,14 +23,15 @@ ChromeUtils.defineESModuleGetters(lazy, {
 });
 
 // A vendor's own addresses count as the site itself, not as outside companies.
+// Gaps in owners.json for the vendors Library's apps use most.
 export const FAMILIES = [
-  ["google.com", "google.ca", "gstatic.com", "googleusercontent.com", "googleapis.com", "ggpht.com", "youtube.com",
-   "ytimg.com", "youtube-nocookie.com", "gmail.com", "googlevideo.com", "recaptcha.net"],
-  ["microsoft.com", "live.com", "office.com", "office.net", "microsoftonline.com", "sharepoint.com", "outlook.com",
-   "msauth.net", "msftauth.net", "bing.com", "onedrive.com", "skype.com"],
-  ["apple.com", "icloud.com", "mzstatic.com", "cdn-apple.com"],
-  ["anthropic.com", "claude.ai"],
-  ["x.com", "twitter.com", "twimg.com", "x.ai", "grok.com"],
+  { name: "Google", domains: ["google.com", "google.ca", "gstatic.com", "googleusercontent.com", "googleapis.com",
+    "ggpht.com", "youtube.com", "ytimg.com", "youtube-nocookie.com", "gmail.com", "googlevideo.com", "recaptcha.net"] },
+  { name: "Microsoft", domains: ["microsoft.com", "live.com", "office.com", "office.net", "microsoftonline.com",
+    "sharepoint.com", "outlook.com", "msauth.net", "msftauth.net", "bing.com", "onedrive.com", "skype.com"] },
+  { name: "Apple", domains: ["apple.com", "icloud.com", "mzstatic.com", "cdn-apple.com"] },
+  { name: "Anthropic", domains: ["anthropic.com", "claude.ai", "claude.com"] },
+  { name: "X", domains: ["x.com", "twitter.com", "twimg.com", "x.ai", "grok.com"] },
 ];
 // Every site may need these to sign in, pay or pass a security check.
 const INFRASTRUCTURE = new Set([
@@ -63,16 +65,36 @@ function baseDomain(host) {
   }
 }
 
-function familyOf(site) {
-  return FAMILIES.find(f => f.includes(site)) || null;
+// Who owns which domain: {companies: [names], domains: {domain: index}} (owners.json), loaded once per Reader.
+let owners = null;
+const ownersReady = fetch("chrome://browser/content/landmax/owners.json")
+  .then(r => r.json())
+  .then(o => (owners = o))
+  .catch(e => console.error("Landmax Clean: no owners list", e));
+
+export function ownerOf(domain) {
+  // The domain itself, then its parents (fonts.googleapis.com -> googleapis.com: some are suffixes of their own).
+  const labels = domain.split(".");
+  for (let i = 0; i < labels.length - 1; i++) {
+    const d = labels.slice(i).join(".");
+    const known = owners?.domains[d];
+    if (known !== undefined) {
+      return owners.companies[known];
+    }
+    const family = FAMILIES.find(f => f.domains.includes(d));
+    if (family) {
+      return family.name;
+    }
+  }
+  return null;
 }
 
 export function isOutside(site, company) {
   if (company === site) {
     return false;
   }
-  const family = familyOf(site);
-  return !(family && family.includes(company));
+  const owner = ownerOf(site);
+  return !(owner && owner === ownerOf(company));
 }
 
 const DIR = PathUtils.join(Services.dirsvc.get("Home", Ci.nsIFile).path, ".local", "share", "landmax", "clean");
@@ -91,6 +113,7 @@ class Clean {
   }
 
   async init() {
+    await ownersReady;
     for (const [file, field] of [[JUDGED, "judged"], [SWITCHES, "switches"]]) {
       try {
         this[field] = await IOUtils.readJSON(file);
@@ -145,7 +168,7 @@ class Clean {
     const top = bc.top;
     // Apps only for now: Browser gets the allow-list with its own Clean panel (site-apps-plan.md, step 6), so a
     // page broken by it always has a switch to fix it. uBlock Origin's block list runs everywhere.
-    if (!top.embedderElement.ownerGlobal?.document.documentElement.hasAttribute("taskbartab")) {
+    if (!top.topChromeWindow?.document.documentElement.hasAttribute("taskbartab")) {
       return;
     }
     const kind = info.externalContentPolicyType;
@@ -222,14 +245,14 @@ class Clean {
     }
     this.asking.add(site);
     const companies = [...q.values()].filter(r => !this.judged[site]?.[r.company]).map(r => ({
-      domain: r.company, hosts: [...r.hosts].slice(0, 5), sends: r.sends,
+      domain: r.company, owner: ownerOf(r.company), hosts: [...r.hosts].slice(0, 5), sends: r.sends,
     }));
     try {
       if (!companies.length) {
         return;
       }
       const proc = await lazy.Subprocess.call({ command: path, arguments: ["judge"], stderr: "stdout" });
-      proc.stdin.write(JSON.stringify({ site, companies }));
+      proc.stdin.write(JSON.stringify({ site, siteOwner: ownerOf(site), companies }));
       await proc.stdin.close();
       let out = "";
       let chunk;
@@ -294,7 +317,8 @@ class Clean {
     const rows = [...page.companies.values()].map(r => {
       const j = this.judged[page.site]?.[r.company];
       const verdict = this.decide(page.site, r.company);
-      return { company: r.company, requests: r.requests, blocked: r.blocked, allowed: verdict.allow, why: verdict.why,
+      return { company: r.company, owner: ownerOf(r.company), requests: r.requests, blocked: r.blocked,
+               allowed: verdict.allow, why: verdict.why,
                purpose: verdict.why === "infrastructure" ? "Sign-in, payments or security" : j?.purpose ?? null,
                checking: !j && verdict.why === "unknown" };
     });

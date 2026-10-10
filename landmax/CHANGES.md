@@ -62,3 +62,5 @@ and Google served its basic, light-only sign-in page.
 | File | Change | Why |
 | --- | --- | --- |
 | `browser/base/content/browser-init.js` | `onLoad` starts `LandmaxClean` (once per Reader) | The allow-list after uBlock Origin's block list: every outside company still asked for is blocked unless needed (`browser/components/landmax/LandmaxClean.sys.mjs`; JEV asked through Library's `landmax-reader-clean` helper, next to the engine) |
+
+Ours, not Mozilla's: `browser/components/landmax/owners.json` (who owns which domain: DuckDuckGo's Tracker Radar entity map merged with Disconnect's entities list; refresh with `python3 landmax/tools/make-owners.py`).

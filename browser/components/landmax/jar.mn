@@ -2,3 +2,4 @@
 
 browser.jar:
     content/browser/landmax/appbar.css (appbar.css)
+    content/browser/landmax/owners.json (owners.json)

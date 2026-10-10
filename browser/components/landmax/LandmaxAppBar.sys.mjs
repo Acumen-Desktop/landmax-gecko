@@ -291,7 +291,7 @@ class AppBar {
       row.why === "everything" ? "Everything loads on this site" : row.purpose ?? "";
     const rows = r.rows.map(row => this.el("li", { "data-allowed": row.allowed },
       this.el("div", { class: "lm-company" },
-        this.el("span", {}, row.company),
+        this.el("span", {}, row.owner ? `${row.owner} (${row.company})` : row.company),
         this.el("span", { class: "lm-dim" }, words(row))),
       this.el("button", { class: "lm-switch", "aria-pressed": row.allowed,
         title: row.allowed ? `Block ${row.company} on ${r.site}` : `Allow ${row.company} on ${r.site}`,
