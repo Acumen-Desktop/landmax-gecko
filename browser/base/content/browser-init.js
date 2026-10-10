@@ -290,6 +290,11 @@ var gBrowserInit = {
   },
 
   onLoad() {
+    // Landmax Reader: Clean's allow-list after the block list, once per Reader (landmax/CHANGES.md).
+    ChromeUtils.importESModule(
+      "moz-src:///browser/components/landmax/LandmaxClean.sys.mjs"
+    ).LandmaxClean.init();
+
     gBrowser.addEventListener("DOMUpdateBlockedPopups", e =>
       PopupAndRedirectBlockerObserver.handleEvent(e)
     );

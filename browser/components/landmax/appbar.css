@@ -192,3 +192,33 @@
   padding: 4px 0;
   border-bottom: 1px solid var(--lm-line);
 }
+
+.lm-companies li {
+  align-items: center;
+  gap: 12px;
+}
+.lm-company {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.lm-companies li[data-allowed="false"] .lm-company > :first-child {
+  color: var(--lm-dim);
+  text-decoration: line-through;
+}
+.lm-switch {
+  appearance: none;
+  min-width: 72px;
+  border-radius: 999px;
+  border: 1px solid var(--lm-line);
+  padding: 3px 10px;
+  font: inherit;
+  cursor: pointer;
+  background: transparent;
+  color: var(--lm-dim);
+}
+.lm-switch[aria-pressed="true"] {
+  background: var(--lm-ok);
+  border-color: var(--lm-ok);
+  color: #0c1410;
+}

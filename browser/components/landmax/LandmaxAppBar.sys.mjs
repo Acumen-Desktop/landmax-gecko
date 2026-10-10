@@ -5,21 +5,18 @@
 // The app bar (landmax-library: docs/site-apps-plan.md › Browser, Apps and Accounts, step 3). An app is a web app
 // window (Taskbar Tabs) listed in its account profile's landmax-logins.json. Its toolbar shows the app's own icon and
 // name, the account it uses with a live check, back, forward, reload, where it is when off its own site, what Clean
-// removed, and a settings panel: Account, Clean, Look.
+// removed (LandmaxClean), and a settings panel: Account, Clean (a switch per outside company), Look.
 
 const HTML = "http://www.w3.org/1999/xhtml";
 const UBO = "uBlock0@raymondhill.net";
 const CHECK = {
   google: "https://accounts.google.com/ListAccounts?gpsia=1&source=ChromiumBrowser&json=standard",
 };
-// A vendor's own addresses count as the app itself, not as outside companies.
-const FAMILY = {
-  google: ["google.com", "gstatic.com", "googleusercontent.com", "googleapis.com", "ggpht.com", "youtube.com",
-           "ytimg.com", "gmail.com", "googlevideo.com", "google.ca"],
-};
 
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
+  LandmaxClean: "moz-src:///browser/components/landmax/LandmaxClean.sys.mjs",
+  isOutside: "moz-src:///browser/components/landmax/LandmaxClean.sys.mjs",
   ExtensionParent: "resource://gre/modules/ExtensionParent.sys.mjs",
   NetUtil: "resource://gre/modules/NetUtil.sys.mjs",
   setInterval: "resource://gre/modules/Timer.sys.mjs",
@@ -94,8 +91,6 @@ class AppBar {
     this.app = app;
     this.account = account;
     this.appHost = Services.io.newURI(app.url).host;
-    this.family = new Set(FAMILY[account.vendor] || []);
-    this.outside = new Map(); // outside company -> requests let through
     this.state = "checking";
     this.emails = [];
   }
@@ -195,30 +190,19 @@ class AppBar {
     }
   }
 
-  isOutside(host) {
-    const base = baseDomain(host);
-    return base !== baseDomain(this.appHost) && !this.family.has(base);
-  }
-
-  observe(subject) {
-    const channel = subject.QueryInterface(Ci.nsIHttpChannel);
-    const bc = BrowsingContext.get(channel.loadInfo?.browsingContextID);
-    if (!bc || bc.top.embedderElement?.ownerGlobal !== this.win) {
-      return;
-    }
-    const host = channel.URI.host;
-    if (this.isOutside(host)) {
-      const company = baseDomain(host);
-      this.outside.set(company, (this.outside.get(company) || 0) + 1);
-    }
+  report() {
+    return lazy.LandmaxClean.instance?.report(this.win.gBrowser.selectedBrowser) ??
+      { site: null, rows: [], blocked: 0, allowedOutside: 0 };
   }
 
   renderClean() {
-    const n = this.blocked();
-    const companies = this.outside.size;
-    this.clean.textContent = `${n} blocked · ${companies} outside`;
-    this.clean.title = `uBlock Origin blocked ${n} requests on this page; ${companies} outside companies still loaded`;
-    this.renderSettings?.();
+    const r = this.report();
+    const n = this.blocked() + r.blocked;
+    this.clean.textContent = `${n} blocked · ${r.allowedOutside} outside`;
+    this.clean.title = `${n} requests blocked on this page; ${r.allowedOutside} outside companies allowed`;
+    if (this.section === "clean" && this.panel?.state === "open") {
+      this.renderSettings();
+    }
   }
 
   // --- Where the app is ------------------------------------------------------------------------------------
@@ -228,7 +212,7 @@ class AppBar {
     try {
       host = uri.host;
     } catch (e) {}
-    const away = host && baseDomain(host) !== baseDomain(this.appHost) && !this.family.has(baseDomain(host));
+    const away = host && lazy.isOutside(baseDomain(this.appHost), baseDomain(host));
     this.doc.documentElement.toggleAttribute("landmax-away", !!away);
     // Back on the app's own site after signing in: check the account again.
     if (host === this.appHost && Date.now() - (this.lastCheck || 0) > 5000) {
@@ -299,17 +283,36 @@ class AppBar {
   }
 
   section_clean() {
-    const n = this.blocked();
-    const rows = [...this.outside.entries()].sort((a, b) => b[1] - a[1]);
+    const r = this.report();
+    const n = this.blocked() + r.blocked;
+    const reload = () => this.win.gBrowser.selectedBrowser.reload();
+    const words = row => row.checking ? "Checking what it's for…" :
+      row.why === "switch" ? `${row.purpose ?? "Your choice"} · your choice` :
+      row.why === "everything" ? "Everything loads on this site" : row.purpose ?? "";
+    const rows = r.rows.map(row => this.el("li", { "data-allowed": row.allowed },
+      this.el("div", { class: "lm-company" },
+        this.el("span", {}, row.company),
+        this.el("span", { class: "lm-dim" }, words(row))),
+      this.el("button", { class: "lm-switch", "aria-pressed": row.allowed,
+        title: row.allowed ? `Block ${row.company} on ${r.site}` : `Allow ${row.company} on ${r.site}`,
+        onclick: () => {
+          lazy.LandmaxClean.instance.setSwitch(r.site, row.company, !row.allowed);
+          reload();
+        } }, row.allowed ? "Allowed" : "Blocked")));
     return [
       this.el("h2", {}, "Clean"),
       this.el("p", { class: "lm-big" }, `${n} blocked on this page`),
-      this.el("p", { class: "lm-dim" }, "Ads, trackers and junk are blocked in every app and in Browser."),
-      this.el("h3", {}, rows.length ? `Still loading from ${rows.length} outside companies` : "Nothing loads from outside companies"),
-      this.el("ul", { class: "lm-companies" },
-        ...rows.map(([company, count]) => this.el("li", {}, this.el("span", {}, company),
-          this.el("span", { class: "lm-dim" }, `${count} ${count === 1 ? "request" : "requests"}`)))),
-    ];
+      this.el("p", { class: "lm-dim" },
+        "Ads and trackers are blocked first. Every other outside company is blocked too, unless the page needs it: " +
+        "JEV says what each one is for, and your switch always wins."),
+      this.el("h3", {}, r.rows.length ? `Outside companies on ${r.site}` : "No outside companies on this page"),
+      this.el("ul", { class: "lm-companies" }, ...rows),
+      r.site && this.el("div", { class: "lm-row" },
+        this.el("button", { onclick: () => {
+          lazy.LandmaxClean.instance.setSwitch(r.site, "*", r.everything ? null : true);
+          reload();
+        } }, r.everything ? "Back to clean" : "Page broken? Let everything load")),
+    ].filter(Boolean);
   }
 
   section_look() {
@@ -338,12 +341,8 @@ class AppBar {
 
   start() {
     this.build();
-    Services.obs.addObserver(this, "http-on-modify-request");
     this.win.gBrowser.addProgressListener({
-      onLocationChange: (progress, request, location, flags) => {
-        if (progress.isTopLevel && !(flags & Ci.nsIWebProgressListener.LOCATION_CHANGE_SAME_DOCUMENT)) {
-          this.outside.clear();
-        }
+      onLocationChange: (progress, request, location) => {
         if (progress.isTopLevel) {
           this.onLocation(location);
         }
@@ -353,7 +352,6 @@ class AppBar {
     const timer = lazy.setInterval(() => this.renderClean(), 2000);
     this.win.addEventListener("unload", () => {
       lazy.clearInterval(timer);
-      Services.obs.removeObserver(this, "http-on-modify-request");
     }, { once: true });
     lazy.setTimeout(() => this.check(), 2000);
   }

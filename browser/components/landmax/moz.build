@@ -5,6 +5,7 @@ with Files("**"):
 
 MOZ_SRC_FILES += [
     "LandmaxAppBar.sys.mjs",
+    "LandmaxClean.sys.mjs",
     "LandmaxLoginsChild.sys.mjs",
     "LandmaxLoginsParent.sys.mjs",
 ]

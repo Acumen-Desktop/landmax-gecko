@@ -56,3 +56,9 @@ and Google served its basic, light-only sign-in page.
 | File | Change | Why |
 | --- | --- | --- |
 | `browser/components/taskbartabs/TaskbarTabsChrome.sys.mjs` | `init` also calls `LandmaxAppBar.init(window)` | An app's own bar: icon, name, account with a live check, Clean's count, settings (`browser/components/landmax/LandmaxAppBar.sys.mjs`, `appbar.css`) |
+
+## Clean, second stage (2026-10-10)
+
+| File | Change | Why |
+| --- | --- | --- |
+| `browser/base/content/browser-init.js` | `onLoad` starts `LandmaxClean` (once per Reader) | The allow-list after uBlock Origin's block list: every outside company still asked for is blocked unless needed (`browser/components/landmax/LandmaxClean.sys.mjs`; JEV asked through Library's `landmax-reader-clean` helper, next to the engine) |
