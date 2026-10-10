@@ -1,0 +1,4 @@
+# Landmax Reader's own front-end files (landmax-library: docs/site-apps-plan.md).
+
+browser.jar:
+    content/browser/landmax/appbar.css (appbar.css)

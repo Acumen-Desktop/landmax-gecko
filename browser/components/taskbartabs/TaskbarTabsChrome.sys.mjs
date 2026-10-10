@@ -6,6 +6,9 @@ import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
 let lazy = {};
 
+ChromeUtils.defineESModuleGetters(lazy, {
+  LandmaxAppBar: "moz-src:///browser/components/landmax/LandmaxAppBar.sys.mjs",
+});
 XPCOMUtils.defineLazyServiceGetters(lazy, {
   Favicons: ["@mozilla.org/browser/favicon-service;1", Ci.nsIFaviconService],
 });
@@ -37,6 +40,9 @@ export const TaskbarTabsChrome = {
 
     // Add a button to control muting/unmuting
     initAudioButton(aWindow);
+
+    // Landmax Reader: an app's own bar (landmax/CHANGES.md).
+    lazy.LandmaxAppBar.init(aWindow);
   },
 };
 

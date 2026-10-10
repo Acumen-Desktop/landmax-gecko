@@ -50,3 +50,9 @@ The switch itself is a branding pref (`browser.taskbarTabs.enabled`), not a chan
 
 The identity file also gets `UAName=Firefox` (`make-application-ini.sh`): without it websites saw `landmax-reader/159.0a1`,
 and Google served its basic, light-only sign-in page.
+
+## The app bar (2026-10-10, `site-apps-plan.md` step 3 in landmax-library)
+
+| File | Change | Why |
+| --- | --- | --- |
+| `browser/components/taskbartabs/TaskbarTabsChrome.sys.mjs` | `init` also calls `LandmaxAppBar.init(window)` | An app's own bar: icon, name, account with a live check, Clean's count, settings (`browser/components/landmax/LandmaxAppBar.sys.mjs`, `appbar.css`) |

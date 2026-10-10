@@ -4,6 +4,9 @@ with Files("**"):
     BUG_COMPONENT = ("Firefox", "General")
 
 MOZ_SRC_FILES += [
+    "LandmaxAppBar.sys.mjs",
     "LandmaxLoginsChild.sys.mjs",
     "LandmaxLoginsParent.sys.mjs",
 ]
+
+JAR_MANIFESTS += ["jar.mn"]
