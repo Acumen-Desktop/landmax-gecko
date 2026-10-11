@@ -222,3 +222,60 @@
   border-color: var(--lm-ok);
   color: #0c1410;
 }
+
+/* Layout: the page's layout widths as a ruler, this window's width as a marker. */
+.lm-ruler {
+  position: relative;
+  display: flex;
+  height: 18px;
+  margin: 10px 0 2px;
+  border-radius: 6px;
+  overflow: visible;
+  gap: 2px;
+}
+.lm-range {
+  background: var(--lm-line);
+  border-radius: 4px;
+}
+.lm-range.lm-now {
+  background: var(--lm-ok);
+  opacity: 0.7;
+}
+.lm-marker {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 3px;
+  margin-left: -1px;
+  border-radius: 2px;
+  background: var(--lm-ink);
+}
+.lm-scale {
+  position: relative;
+  height: 16px;
+  font-size: 11px;
+  color: var(--lm-dim);
+}
+.lm-scale span {
+  position: absolute;
+  transform: translateX(-50%);
+}
+.lm-ranges {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+.lm-ranges li {
+  display: flex;
+  justify-content: space-between;
+  padding: 3px 0;
+}
+.lm-ranges li.lm-now {
+  color: var(--lm-ok);
+  font-weight: 600;
+}
+.lm-row .lm-choice[aria-pressed="true"] {
+  background: var(--lm-ok);
+  border-color: var(--lm-ok);
+  color: #0c1410;
+}

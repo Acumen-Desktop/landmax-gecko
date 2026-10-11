@@ -64,3 +64,12 @@ and Google served its basic, light-only sign-in page.
 | `browser/base/content/browser-init.js` | `onLoad` starts `LandmaxClean` (once per Reader) | The allow-list after uBlock Origin's block list: every outside company still asked for is blocked unless needed (`browser/components/landmax/LandmaxClean.sys.mjs`; JEV asked through Library's `landmax-reader-clean` helper, next to the engine) |
 
 Ours, not Mozilla's: `browser/components/landmax/owners.json` (who owns which domain: DuckDuckGo's Tracker Radar entity map merged with Disconnect's entities list; refresh with `python3 landmax/tools/make-owners.py`).
+
+## Recipes and Layout (2026-10-11)
+
+| File | Change | Why |
+| --- | --- | --- |
+| `browser/components/DesktopActorRegistry.sys.mjs` | Registers the `LandmaxLayout` actor on http(s) pages | An app's Layout section reads the page's layout widths (`LandmaxLayoutChild.sys.mjs`) |
+
+Ours: `LandmaxRecipes.sys.mjs`, one recipe per site in `~/.local/share/landmax/recipes/` (Clean's verdicts and switches,
+the layout widths and the person's portrait or landscape, later the site's own CSS and JS).

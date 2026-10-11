@@ -687,6 +687,20 @@ let JSWINDOWACTORS = {
     remoteTypes: ["parent", "privilegedabout"],
   },
 
+  // Landmax Reader: an app's Layout section reads the page's layout widths (landmax/CHANGES.md).
+  LandmaxLayout: {
+    parent: {
+      esModuleURI: "moz-src:///browser/components/landmax/LandmaxLayoutParent.sys.mjs",
+    },
+    child: {
+      esModuleURI: "moz-src:///browser/components/landmax/LandmaxLayoutChild.sys.mjs",
+    },
+    matches: ["https://*/*", "http://*/*"],
+    messageManagerGroups: ["browsers"],
+    // It only reads the page's own style sheets and returns numbers.
+    safeForUntrustedWebProcess: true,
+  },
+
   // Landmax Reader: logins fill their email on the vendor's sign-in page, and skip its advert page (landmax/CHANGES.md).
   LandmaxLogins: {
     parent: {

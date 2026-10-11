@@ -5,7 +5,8 @@
 // The app bar (landmax-library: docs/site-apps-plan.md › Browser, Apps and Accounts, step 3). An app is a web app
 // window (Taskbar Tabs) listed in its account profile's landmax-logins.json. Its toolbar shows the app's own icon and
 // name, the account it uses with a live check, back, forward, reload, where it is when off its own site, what Clean
-// removed (LandmaxClean), and a settings panel: Account, Clean (a switch per outside company), Look.
+// removed (LandmaxClean), and a settings panel: Account, Clean (a switch per outside company), Layout (the site's
+// layout widths, measured once and kept in its recipe; the person picks portrait or landscape), Look.
 
 const HTML = "http://www.w3.org/1999/xhtml";
 const UBO = "uBlock0@raymondhill.net";
@@ -16,6 +17,7 @@ const CHECK = {
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
   LandmaxClean: "moz-src:///browser/components/landmax/LandmaxClean.sys.mjs",
+  LandmaxRecipes: "moz-src:///browser/components/landmax/LandmaxRecipes.sys.mjs",
   isOutside: "moz-src:///browser/components/landmax/LandmaxClean.sys.mjs",
   ExtensionParent: "resource://gre/modules/ExtensionParent.sys.mjs",
   NetUtil: "resource://gre/modules/NetUtil.sys.mjs",
@@ -218,6 +220,113 @@ class AppBar {
     if (host === this.appHost && Date.now() - (this.lastCheck || 0) > 5000) {
       this.check();
     }
+    lazy.setTimeout(() => this.measure(), 4000);
+  }
+
+  // --- Layout ----------------------------------------------------------------------------------------------
+
+  host() {
+    try {
+      return this.win.gBrowser.selectedBrowser.currentURI.host;
+    } catch (e) {
+      return "";
+    }
+  }
+
+  layoutOf(host) {
+    const recipes = lazy.LandmaxRecipes.instance;
+    const site = baseDomain(host);
+    return recipes?.has(site) ? recipes.get(site).layout.hosts[host] : undefined;
+  }
+
+  async measure(again = false) {
+    const host = this.host();
+    if (!host || (!again && this.layoutOf(host)?.widths)) {
+      return;
+    }
+    let found;
+    try {
+      found = await this.win.gBrowser.selectedBrowser.browsingContext.currentWindowGlobal
+        .getActor("LandmaxLayout").sendQuery("LandmaxLayout:Measure");
+    } catch (e) {
+      return;
+    }
+    if (!found || this.host() !== host) {
+      return;
+    }
+    const recipes = await lazy.LandmaxRecipes.ready();
+    recipes.update(baseDomain(host), r => {
+      r.layout.hosts[host] = { ...r.layout.hosts[host], widths: found.widths, unreadable: found.unreadable,
+                               measuredAt: new Date().toISOString().slice(0, 10) };
+    });
+    this.renderSettings();
+  }
+
+  // The page's width in its own CSS pixels (the window's width over the zoom): where the window falls on the ruler.
+  viewport() {
+    const browser = this.win.gBrowser.selectedBrowser;
+    return Math.round(browser.clientWidth / this.win.ZoomManager.getZoomForBrowser(browser));
+  }
+
+  section_layout() {
+    const host = this.host();
+    const layout = this.layoutOf(host);
+    const head = [this.el("h2", {}, "Layout")];
+    if (!layout?.widths) {
+      return [...head, this.el("p", { class: "lm-dim" }, `Reading ${host || "this page"}'s layout widths…`),
+        this.el("div", { class: "lm-row" }, this.el("button", { onclick: () => this.measure(true) }, "Read them now"))];
+    }
+    // The widths that matter: the ones most rules depend on (up to six), smallest first.
+    const total = layout.widths.reduce((n, w) => n + w.rules, 0);
+    const key = layout.widths.filter(w => w.rules >= Math.max(2, total * 0.04));
+    const steps = (key.length ? key : layout.widths).slice().sort((a, b) => b.rules - a.rules).slice(0, 6)
+      .map(w => w.px).sort((a, b) => a - b);
+    const now = this.viewport();
+    const end = Math.max(1600, Math.round((Math.max(now, steps.at(-1) || 0) * 1.2) / 100) * 100);
+    const ranges = [0, ...steps].map((from, i) => ({ from, to: steps[i] ?? Infinity }));
+    const label = r => r.from === 0 ? `under ${r.to} px` : r.to === Infinity ? `${r.from} px and wider` :
+      `${r.from} to ${r.to - 1} px`;
+    const ruler = this.el("div", { class: "lm-ruler" },
+      ...ranges.map(r => this.el("div", {
+        class: "lm-range" + (now >= r.from && now < r.to ? " lm-now" : ""),
+        style: `flex: ${(Math.min(r.to, end) - r.from) / end}`,
+        title: label(r),
+      })),
+      this.el("div", { class: "lm-marker", style: `left: ${Math.min(100, (now / end) * 100)}%`,
+                       title: `This window: ${now} px` }));
+    const scale = this.el("div", { class: "lm-scale" },
+      ...steps.map(px => this.el("span", { style: `left: ${(px / end) * 100}%` }, String(px))));
+    const fit = layout.fit;
+    const choose = value => async () => {
+      const recipes = await lazy.LandmaxRecipes.ready();
+      recipes.update(baseDomain(host), r => {
+        r.layout.hosts[host].fit = r.layout.hosts[host].fit === value ? null : value;
+      });
+      this.renderSettings();
+    };
+    return [
+      ...head,
+      this.el("p", {}, steps.length ? `${host} changes its design at ${steps.length} widths:` :
+        `${host} keeps one design at every width.`),
+      ruler,
+      scale,
+      this.el("ul", { class: "lm-ranges" }, ...ranges.map(r => this.el("li",
+        { class: now >= r.from && now < r.to ? "lm-now" : "" },
+        this.el("span", {}, label(r)),
+        this.el("span", { class: "lm-dim" }, now >= r.from && now < r.to ? `this window now (${now} px)` : "")))),
+      this.el("h3", {}, "This app suits"),
+      this.el("div", { class: "lm-row" },
+        this.el("button", { class: "lm-choice", "aria-pressed": fit === "portrait", onclick: choose("portrait") },
+          "Portrait: a tall zone"),
+        this.el("button", { class: "lm-choice", "aria-pressed": fit === "landscape", onclick: choose("landscape") },
+          "Landscape: a wide zone")),
+      this.el("p", { class: "lm-dim" },
+        "Left and Right zones are portrait, Centre and Bottom landscape. Drag a zone's edge and the marker moves. " +
+        "Saved in this site's recipe; the desktop uses it when apps get their home zones."),
+      this.el("div", { class: "lm-row" },
+        this.el("button", { onclick: () => this.measure(true) }, "Read the widths again"),
+        this.el("span", { class: "lm-dim" }, `Read ${layout.measuredAt}`)),
+    ];
   }
 
   // --- Settings --------------------------------------------------------------------------------------------
@@ -247,7 +356,7 @@ class AppBar {
     if (!this.panel) {
       return;
     }
-    const sections = { account: "Account", clean: "Clean", look: "Look" };
+    const sections = { account: "Account", clean: "Clean", layout: "Layout", look: "Look" };
     this.list.replaceChildren(
       this.el("div", { class: "lm-title" }, this.icon.cloneNode(), this.app.name),
       ...Object.entries(sections).map(([key, label]) =>
@@ -350,6 +459,11 @@ class AppBar {
       QueryInterface: ChromeUtils.generateQI(["nsIWebProgressListener", "nsISupportsWeakReference"]),
     });
     const timer = lazy.setInterval(() => this.renderClean(), 2000);
+    this.win.addEventListener("resize", () => {
+      if (this.section === "layout" && this.panel?.state === "open") {
+        this.renderSettings();
+      }
+    });
     this.win.addEventListener("unload", () => {
       lazy.clearInterval(timer);
     }, { once: true });

@@ -4,19 +4,20 @@
 
 // Clean, second stage (landmax-library: docs/site-apps-plan.md › Apps have three layers). uBlock Origin's block
 // list runs first; whatever outside company a page still asks for is then blocked unless something says it's needed:
-//   1. the person's switch for that company on that site (switches.json), or "let everything load" for the site;
+//   1. the person's switch for that company on that site, or "let everything load" for the site;
 //   2. the site's own company (owners.json: who owns which domain, from DuckDuckGo's Tracker Radar and Disconnect,
 //      made by landmax/tools/make-owners.py; FAMILIES fills gaps) and the infrastructure every site may need
 //      (sign-in, payments, security checks);
-//   3. JEV's judgement (judged.json, asked through the landmax-reader-clean helper, one call per site): what the
+//   3. JEV's judgement (asked through the landmax-reader-clean helper, one call per site): what the
 //      company is there for; content, fonts, video players, maps, sign-in, payments and security are allowed;
 //      ads, tracking, social and popups are blocked even when the site's own organisation runs them; comments and
 //      anything else are blocked unless the site's own organisation runs them.
 // A company nobody has judged yet is blocked and asked about; if JEV then allows it, the page reloads once.
-// Files: ~/.local/share/landmax/clean/ (shared by every profile of this person).
+// Verdicts and switches live in the site's recipe (LandmaxRecipes), made on the first visit.
 
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
+  LandmaxRecipes: "moz-src:///browser/components/landmax/LandmaxRecipes.sys.mjs",
   Subprocess: "resource://gre/modules/Subprocess.sys.mjs",
   setTimeout: "resource://gre/modules/Timer.sys.mjs",
   clearTimeout: "resource://gre/modules/Timer.sys.mjs",
@@ -97,14 +98,9 @@ export function isOutside(site, company) {
   return !(owner && owner === ownerOf(company));
 }
 
-const DIR = PathUtils.join(Services.dirsvc.get("Home", Ci.nsIFile).path, ".local", "share", "landmax", "clean");
-const JUDGED = PathUtils.join(DIR, "judged.json");
-const SWITCHES = PathUtils.join(DIR, "switches.json");
 
 class Clean {
   constructor() {
-    this.judged = {}; // site -> company -> {purpose, needed, sameOwner, at}
-    this.switches = {}; // site -> company (or "*") -> true (allow) / false (block)
     this.pages = new Map(); // a tab's browserId (stable across site changes) -> {site, companies, reloaded}
     this.queue = new Map(); // site -> Map(company -> evidence)
     this.timers = new Map();
@@ -114,26 +110,18 @@ class Clean {
 
   async init() {
     await ownersReady;
-    for (const [file, field] of [[JUDGED, "judged"], [SWITCHES, "switches"]]) {
-      try {
-        this[field] = await IOUtils.readJSON(file);
-      } catch (e) {}
-    }
+    this.recipes = await lazy.LandmaxRecipes.ready();
     Services.obs.addObserver(this, "http-on-modify-request");
   }
 
-  save(field) {
-    lazy.clearTimeout(this["save_" + field]);
-    this["save_" + field] = lazy.setTimeout(async () => {
-      await IOUtils.makeDirectory(DIR, { ignoreExisting: true });
-      await IOUtils.writeJSON(field === "judged" ? JUDGED : SWITCHES, this[field]);
-    }, 500);
+  verdict(site, company) {
+    return this.recipes.has(site) ? this.recipes.get(site).clean.companies[company] : undefined;
   }
 
   // --- The decision ----------------------------------------------------------------------------------------
 
   decide(site, company) {
-    const mine = this.switches[site] || {};
+    const mine = this.recipes.has(site) ? this.recipes.get(site).clean.switches : {};
     if (company in mine) {
       return { allow: mine[company], why: "switch" };
     }
@@ -143,7 +131,7 @@ class Clean {
     if (INFRASTRUCTURE.has(company)) {
       return { allow: true, why: "infrastructure" };
     }
-    const j = this.judged[site]?.[company];
+    const j = this.verdict(site, company);
     if (!j) {
       return { allow: false, why: "unknown" };
     }
@@ -244,7 +232,7 @@ class Clean {
       return;
     }
     this.asking.add(site);
-    const companies = [...q.values()].filter(r => !this.judged[site]?.[r.company]).map(r => ({
+    const companies = [...q.values()].filter(r => !this.verdict(site, r.company)).map(r => ({
       domain: r.company, owner: ownerOf(r.company), hosts: [...r.hosts].slice(0, 5), sends: r.sends,
     }));
     try {
@@ -265,11 +253,11 @@ class Clean {
         return;
       }
       const at = new Date().toISOString().slice(0, 10);
-      this.judged[site] ||= {};
-      for (const [company, j] of Object.entries(answer.companies)) {
-        this.judged[site][company] = { ...j, at };
-      }
-      this.save("judged");
+      this.recipes.update(site, r => {
+        for (const [company, j] of Object.entries(answer.companies)) {
+          r.clean.companies[company] = { ...j, owner: ownerOf(company), at };
+        }
+      });
       this.reloadWhereNowAllowed(site);
     } catch (e) {
       console.error("Landmax Clean: couldn't ask JEV", e);
@@ -315,7 +303,7 @@ class Clean {
       return { site: null, rows: [], blocked: 0, allowedOutside: 0 };
     }
     const rows = [...page.companies.values()].map(r => {
-      const j = this.judged[page.site]?.[r.company];
+      const j = this.verdict(page.site, r.company);
       const verdict = this.decide(page.site, r.company);
       return { company: r.company, owner: ownerOf(r.company), requests: r.requests, blocked: r.blocked,
                allowed: verdict.allow, why: verdict.why,
@@ -325,7 +313,7 @@ class Clean {
     rows.sort((a, b) => b.allowed - a.allowed || b.requests - a.requests);
     return {
       site: page.site,
-      everything: !!this.switches[page.site]?.["*"],
+      everything: !!(this.recipes.has(page.site) && this.recipes.get(page.site).clean.switches["*"]),
       rows,
       blocked: rows.reduce((n, r) => n + r.blocked, 0),
       allowedOutside: rows.filter(r => r.allowed).length,
@@ -333,13 +321,13 @@ class Clean {
   }
 
   setSwitch(site, company, allow) {
-    this.switches[site] ||= {};
-    if (allow === null) {
-      delete this.switches[site][company];
-    } else {
-      this.switches[site][company] = allow;
-    }
-    this.save("switches");
+    this.recipes.update(site, r => {
+      if (allow === null) {
+        delete r.clean.switches[company];
+      } else {
+        r.clean.switches[company] = allow;
+      }
+    });
   }
 
   onChange(fn) {
