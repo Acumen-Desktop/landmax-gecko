@@ -197,6 +197,10 @@
   align-items: center;
   gap: 12px;
 }
+.lm-companies li > button {
+  flex: none;
+  white-space: nowrap;
+}
 .lm-company {
   display: flex;
   flex-direction: column;

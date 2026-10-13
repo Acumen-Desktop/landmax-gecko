@@ -10,7 +10,10 @@ MOZ_SRC_FILES += [
     "LandmaxLayoutParent.sys.mjs",
     "LandmaxLoginsChild.sys.mjs",
     "LandmaxLoginsParent.sys.mjs",
+    "LandmaxRecipeChild.sys.mjs",
+    "LandmaxRecipeParent.sys.mjs",
     "LandmaxRecipes.sys.mjs",
+    "LandmaxStarterRecipes.sys.mjs",
 ]
 
 JAR_MANIFESTS += ["jar.mn"]

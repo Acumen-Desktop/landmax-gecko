@@ -73,3 +73,13 @@ Ours, not Mozilla's: `browser/components/landmax/owners.json` (who owns which do
 
 Ours: `LandmaxRecipes.sys.mjs`, one recipe per site in `~/.local/share/landmax/recipes/` (Clean's verdicts and switches,
 the layout widths and the person's portrait or landscape, later the site's own CSS and JS).
+
+## Recipes on the page: tweaks, css and js (2026-10-12)
+
+| File | Change | Why |
+| --- | --- | --- |
+| `browser/components/DesktopActorRegistry.sys.mjs` | Registers the `LandmaxRecipe` actor on http(s) pages, all frames (`DOMWindowCreated`, `DOMContentLoaded`) | Each site's recipe goes on its pages: style sheets as author sheets before the page draws, scripts in a sandbox over the page once it has loaded (`LandmaxRecipeChild.sys.mjs`) |
+
+Ours: `LandmaxStarterRecipes.sys.mjs` (the tweaks Reader brings, Gmail first), merged under the person's own in
+`LandmaxRecipes` (`tweaks`, `tweaksOn`, `css`, `js`), which publishes what to inject through sharedData; the app bar's
+Tweaks section (one switch each, a count of what each finds on the page, or a guide to the site's own setting).

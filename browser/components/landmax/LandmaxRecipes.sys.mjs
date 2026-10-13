@@ -8,14 +8,22 @@
 //   clean.switches   the person's switch per company (true = allow), "*" = let everything load
 //   layout.hosts     per host: its CSS layout widths {widths: [{px, rules}], measuredAt} and the person's fit
 //                    ("portrait" or "landscape")
-//   css, js          the site's own fixes, injected on every visit (later; the old TPA recipes)
+//   css, js          the person's own fixes for the whole site, injected on every visit (LandmaxRecipeChild)
+//   tweaks           the person's own tweaks, the same shape as Reader's starter ones (LandmaxStarterRecipes), which
+//                    they add to or replace by id
+//   tweaksOn         the person's switch per tweak id (true / false); a tweak's own `on` otherwise
 // One file per site (its base domain): ~/.local/share/landmax/recipes/<site>.json, shared by every profile.
+// What to inject goes to every content process through sharedData ("LandmaxRecipes:inject"), so a page gets its
+// style sheet as its window is made, before it draws.
 
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
   setTimeout: "resource://gre/modules/Timer.sys.mjs",
   clearTimeout: "resource://gre/modules/Timer.sys.mjs",
+  STARTER: "moz-src:///browser/components/landmax/LandmaxStarterRecipes.sys.mjs",
 });
+
+export const INJECT_KEY = "LandmaxRecipes:inject";
 
 const ROOT = PathUtils.join(Services.dirsvc.get("Home", Ci.nsIFile).path, ".local", "share", "landmax");
 const DIR = PathUtils.join(ROOT, "recipes");
@@ -29,7 +37,16 @@ function blank(site) {
     layout: { hosts: {} },
     css: "",
     js: "",
+    tweaks: [],
+    tweaksOn: {},
   };
+}
+
+// What a tweak puts on the page: its style sheet (with its hidden selectors) and its script.
+function injection(t) {
+  const css = [t.hide?.length ? `${t.hide.join(",\n")} {\n  display: none !important;\n}` : "", t.css || ""]
+    .filter(Boolean).join("\n");
+  return { id: t.id, hosts: t.hosts ?? null, css, js: t.js || "", hide: t.hide ?? [] };
 }
 
 function fileFor(site) {
@@ -55,6 +72,7 @@ class Recipes {
       } catch (e) {}
     }
     await this.migrate();
+    this.publish();
   }
 
   // Clean's first files (2026-10-10, judged.json and switches.json) move into the recipes.
@@ -89,6 +107,41 @@ class Recipes {
 
   has(site) {
     return this.cache.has(site);
+  }
+
+  // Reader's starter tweaks for the site with the person's own on top, and whether each is on.
+  tweaks(site) {
+    const mine = this.cache.get(site);
+    const byId = new Map();
+    for (const t of [...(lazy.STARTER[site]?.tweaks ?? []), ...(mine?.tweaks ?? [])]) {
+      byId.set(t.id, { ...byId.get(t.id), ...t });
+    }
+    return [...byId.values()].map(t => ({ ...t, on: !t.guide && (mine?.tweaksOn?.[t.id] ?? t.on ?? false) }));
+  }
+
+  setTweak(site, id, on) {
+    this.update(site, r => {
+      r.tweaksOn = { ...r.tweaksOn, [id]: on };
+    });
+    this.publish();
+  }
+
+  // Everything that's on, per site: the person's own css and js first, then the tweaks.
+  publish() {
+    const out = {};
+    for (const site of new Set([...Object.keys(lazy.STARTER), ...this.cache.keys()])) {
+      const mine = this.cache.get(site);
+      const items = [
+        ...(mine?.css || mine?.js ? [injection({ id: "", css: mine.css, js: mine.js })] : []),
+        ...this.tweaks(site).filter(t => t.on).map(injection),
+      ].filter(i => i.css || i.js);
+      if (items.length) {
+        out[site] = items;
+      }
+    }
+    this.injections = out;
+    Services.ppmm.sharedData.set(INJECT_KEY, out);
+    Services.ppmm.sharedData.flush();
   }
 
   update(site, change) {

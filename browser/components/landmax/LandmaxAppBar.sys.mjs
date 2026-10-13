@@ -6,7 +6,8 @@
 // window (Taskbar Tabs) listed in its account profile's landmax-logins.json. Its toolbar shows the app's own icon and
 // name, the account it uses with a live check, back, forward, reload, where it is when off its own site, what Clean
 // removed (LandmaxClean), and a settings panel: Account, Clean (a switch per outside company), Layout (the site's
-// layout widths, measured once and kept in its recipe; the person picks portrait or landscape), Look.
+// layout widths, measured once and kept in its recipe; the person picks portrait or landscape), Tweaks (the site's
+// recipe: Reader's starter tweaks and the person's own, one switch each), Look.
 
 const HTML = "http://www.w3.org/1999/xhtml";
 const UBO = "uBlock0@raymondhill.net";
@@ -108,7 +109,7 @@ class AppBar {
         e.setAttribute(k, v);
       }
     }
-    e.append(...kids);
+    e.append(...kids.filter(k => k !== null && k !== undefined && k !== false));
     return e;
   }
 
@@ -329,6 +330,73 @@ class AppBar {
     ];
   }
 
+  // --- Tweaks ----------------------------------------------------------------------------------------------
+
+  async countTweaks() {
+    try {
+      this.counts = await this.win.gBrowser.selectedBrowser.browsingContext.currentWindowGlobal
+        .getActor("LandmaxRecipe").sendQuery("LandmaxRecipe:Count");
+    } catch (e) {
+      this.counts = {};
+    }
+    if (this.section === "tweaks") {
+      this.renderSettings();
+    }
+  }
+
+  async setTweak(site, tweak, on) {
+    const recipes = await lazy.LandmaxRecipes.ready();
+    recipes.setTweak(site, tweak.id, on);
+    const browser = this.win.gBrowser.selectedBrowser;
+    if (tweak.js) {
+      browser.reload(); // a script can't be taken back out of a page
+    } else {
+      for (const bc of browser.browsingContext.getAllBrowsingContextsInSubtree()) {
+        try {
+          bc.currentWindowGlobal?.getActor("LandmaxRecipe").sendAsyncMessage("LandmaxRecipe:Apply",
+            recipes.injections);
+        } catch (e) {}
+      }
+    }
+    lazy.setTimeout(() => this.countTweaks(), tweak.js ? 3000 : 300);
+    this.renderSettings();
+  }
+
+  section_tweaks() {
+    const host = this.host();
+    const site = baseDomain(host);
+    const recipes = lazy.LandmaxRecipes.instance;
+    const tweaks = (recipes?.tweaks(site) ?? []).filter(t => !t.hosts || t.hosts.includes(host));
+    if (this.countedFor !== host) {
+      this.countedFor = host;
+      this.counts = {};
+      this.countTweaks();
+    }
+    const found = t => {
+      const n = this.counts?.[t.id];
+      return !t.on || n === undefined ? "" : n ? `${n} on this page` : "Nothing on this page";
+    };
+    const rows = tweaks.map(t => t.guide ?
+      this.el("li", { class: "lm-guide" },
+        this.el("div", { class: "lm-company" },
+          this.el("span", {}, t.label),
+          this.el("span", { class: "lm-dim" }, t.guide)),
+        t.open && this.el("button", { onclick: () => this.goTo(t.open) }, "Open it")) :
+      this.el("li", {},
+        this.el("div", { class: "lm-company" },
+          this.el("span", {}, t.label),
+          this.el("span", { class: "lm-dim" }, [t.about, found(t)].filter(Boolean).join(" · "))),
+        this.el("button", { class: "lm-switch", "aria-pressed": t.on, title: t.on ? "Turn off" : "Turn on",
+          onclick: () => this.setTweak(site, t, !t.on) }, t.on ? "On" : "Off")));
+    return [
+      this.el("h2", {}, "Tweaks"),
+      this.el("p", { class: "lm-dim" }, tweaks.length ?
+        `Changes Reader makes to ${host}, kept in its recipe. Each one is yours to turn off.` :
+        `No tweaks for ${host || "this page"} yet.`),
+      this.el("ul", { class: "lm-companies" }, ...rows),
+    ];
+  }
+
   // --- Settings --------------------------------------------------------------------------------------------
 
   openSettings(section) {
@@ -356,7 +424,7 @@ class AppBar {
     if (!this.panel) {
       return;
     }
-    const sections = { account: "Account", clean: "Clean", layout: "Layout", look: "Look" };
+    const sections = { account: "Account", clean: "Clean", layout: "Layout", tweaks: "Tweaks", look: "Look" };
     this.list.replaceChildren(
       this.el("div", { class: "lm-title" }, this.icon.cloneNode(), this.app.name),
       ...Object.entries(sections).map(([key, label]) =>
@@ -458,7 +526,12 @@ class AppBar {
       },
       QueryInterface: ChromeUtils.generateQI(["nsIWebProgressListener", "nsISupportsWeakReference"]),
     });
-    const timer = lazy.setInterval(() => this.renderClean(), 2000);
+    const timer = lazy.setInterval(() => {
+      this.renderClean();
+      if (this.section === "tweaks" && this.panel?.state === "open") {
+        this.countTweaks(); // a tweak's script finds more as the page fills in
+      }
+    }, 2000);
     this.win.addEventListener("resize", () => {
       if (this.section === "layout" && this.panel?.state === "open") {
         this.renderSettings();

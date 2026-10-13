@@ -701,6 +701,25 @@ let JSWINDOWACTORS = {
     safeForUntrustedWebProcess: true,
   },
 
+  // Landmax Reader: each site's recipe on its pages, its tweaks and the person's own css and js (landmax/CHANGES.md).
+  LandmaxRecipe: {
+    parent: {
+      esModuleURI: "moz-src:///browser/components/landmax/LandmaxRecipeParent.sys.mjs",
+    },
+    child: {
+      esModuleURI: "moz-src:///browser/components/landmax/LandmaxRecipeChild.sys.mjs",
+      events: {
+        DOMWindowCreated: {},
+        DOMContentLoaded: {},
+      },
+    },
+    matches: ["https://*/*", "http://*/*"],
+    allFrames: true,
+    messageManagerGroups: ["browsers"],
+    // The parent only hands out the recipes' injections, which every content process gets anyway.
+    safeForUntrustedWebProcess: true,
+  },
+
   // Landmax Reader: logins fill their email on the vendor's sign-in page, and skip its advert page (landmax/CHANGES.md).
   LandmaxLogins: {
     parent: {
